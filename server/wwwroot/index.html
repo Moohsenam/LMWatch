@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>ثبت سفارش</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='none' stroke='%23d97757' stroke-width='4'/><circle cx='16' cy='16' r='4' fill='%23eeeae2'/></svg>">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="mark"><i></i></div>
+    <div>
+      <h1 id="brand">Claude Watch</h1>
+      <p data-t="tagline">پرداخت اشتراک به‌جای شما</p>
+    </div>
+    <div class="spacer"></div>
+    <button class="ghost" id="lang">English</button>
+  </header>
+
+  <div id="notice" class="banner warn hidden"></div>
+
+  <!-- ============================ order form ============================ -->
+  <section id="formCard" class="card">
+    <h2 class="section" data-t="formTitle">ثبت سفارش</h2>
+    <p class="hint" data-t="formIntro">
+      فرم را پر کنید. پس از بررسی، از همان راه ارتباطی که می‌نویسید با شما تماس گرفته می‌شود و مبلغ و روش تسویه را هماهنگ می‌کنیم.
+    </p>
+
+    <div class="divider"></div>
+
+    <form id="orderForm" autocomplete="off">
+      <div class="row">
+        <label class="field">
+          <span data-t="plan">اشتراک</span>
+          <select id="plan" required></select>
+        </label>
+        <label class="field">
+          <span data-t="months">مدت</span>
+          <select id="months">
+            <option value="1">۱ ماه</option>
+            <option value="3">۳ ماه</option>
+            <option value="6">۶ ماه</option>
+            <option value="12">۱۲ ماه</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        <span data-t="email">ایمیل اکانت Claude</span>
+        <input type="email" id="email" required placeholder="you@example.com" dir="ltr">
+      </label>
+
+      <div class="row">
+        <label class="field">
+          <span data-t="contactKind">راه ارتباطی</span>
+          <select id="contactKind">
+            <option value="telegram">Telegram</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="email">Email</option>
+            <option value="phone" data-t="optPhone">تلفن</option>
+          </select>
+        </label>
+        <label class="field">
+          <span data-t="contact">آیدی یا شماره</span>
+          <input type="text" id="contact" required dir="ltr">
+        </label>
+      </div>
+
+      <label class="field">
+        <span data-t="country">کشور محل استفاده</span>
+        <input type="text" id="country" placeholder="Germany" dir="ltr">
+      </label>
+
+      <label class="field">
+        <span data-t="noteLabel">توضیح (اختیاری)</span>
+        <textarea id="note" maxlength="1000"></textarea>
+      </label>
+
+      <label class="hp"><span>Website</span><input type="text" id="website" tabindex="-1"></label>
+
+      <label class="check">
+        <input type="checkbox" id="eligible" required>
+        <span data-t="eligibleText">
+          تأیید می‌کنم اکانت من در کشوری استفاده می‌شود که Anthropic آن را پشتیبانی می‌کند و شرایط استفاده را پذیرفته‌ام.
+        </span>
+      </label>
+
+      <p class="note" data-t="passwordWarning">هرگز رمز اکانتتان را در این فرم یا در پیام ننویسید. برای پرداخت لازم نیست.</p>
+
+      <div id="formError" class="banner bad hidden" style="margin-top:14px"></div>
+
+      <button type="submit" class="primary" id="submit" style="margin-top:16px; width:100%">
+        <span data-t="submit">ثبت سفارش</span>
+      </button>
+    </form>
+  </section>
+
+  <!-- ============================== result ============================== -->
+  <section id="doneCard" class="card hidden">
+    <div class="result">
+      <p class="hint" data-t="doneTitle">سفارش ثبت شد</p>
+      <div class="big code" id="doneCode"></div>
+      <p class="hint" data-t="doneBody">
+        این کد را نگه دارید. با همین کد می‌توانید وضعیت سفارش را ببینید.
+      </p>
+      <div id="doneContact" style="margin-top:16px"></div>
+      <button class="secondary small" id="again" style="margin-top:20px" data-t="again">ثبت سفارش دیگر</button>
+    </div>
+  </section>
+
+  <!-- =============================== track ============================== -->
+  <section class="card tight">
+    <h3 data-t="trackTitle">پیگیری سفارش</h3>
+    <div class="row" style="margin-top:10px">
+      <input type="text" id="trackCode" placeholder="CW-XXXXXX" dir="ltr" style="text-transform:uppercase">
+      <button class="secondary" id="trackBtn" style="flex:0 0 auto" data-t="trackBtn">پیگیری</button>
+    </div>
+    <div id="trackResult" style="margin-top:14px"></div>
+  </section>
+
+  <footer class="foot">
+    <span id="footBrand">Claude Watch</span>
+  </footer>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

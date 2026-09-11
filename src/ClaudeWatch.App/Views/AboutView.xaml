@@ -1,0 +1,48 @@
+<UserControl x:Class="ClaudeWatch.App.Views.AboutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,4,24,24" MaxWidth="720" HorizontalAlignment="Left">
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Grid Width="42" Height="42" VerticalAlignment="Center">
+                            <Ellipse Stroke="{DynamicResource Accent}" StrokeThickness="4.5" />
+                            <Ellipse Width="13" Height="13" Fill="{DynamicResource Text}" />
+                        </Grid>
+                        <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding L[App_Name]}" Style="{StaticResource Display}" FontSize="22" />
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <TextBlock Text="{Binding L[About_Version]}" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding VersionText}" Style="{StaticResource Caption}"
+                                           Margin="5,0,14,0" />
+                                <TextBlock Text="{Binding ElevationText}" Style="{StaticResource Caption}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,18" />
+
+                    <TextBlock Text="{Binding L[About_What]}" Style="{StaticResource H2}" />
+                    <TextBlock Text="{Binding L[About_Body]}" Style="{StaticResource Dim}" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0"
+                    Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource Warn}">
+                <TextBlock Text="{Binding L[About_Warning]}" Style="{StaticResource Body}" />
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding L[About_Credit]}" Style="{StaticResource Body}" />
+                    <Button Content="{Binding L[About_Source]}" Style="{StaticResource LinkButton}"
+                            HorizontalAlignment="Left" Margin="0,10,0,0" Command="{Binding OpenSourceCommand}" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

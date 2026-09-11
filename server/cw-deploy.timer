@@ -1,0 +1,12 @@
+# /etc/systemd/system/cw-deploy.timer
+# Every two minutes. With nothing new this is one git fetch and nothing else.
+[Unit]
+Description=Check for Claude Watch updates
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,143 @@
+<UserControl x:Class="ClaudeWatch.App.Views.UsageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24,4,24,28">
+
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{Binding L[Usage_Title]}" Style="{StaticResource Display}" FontSize="20" />
+                    <TextBlock Text="{Binding UsageUpdated}" Style="{StaticResource Caption}" Margin="0,4,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <ComboBox Style="{StaticResource Picker}" Width="120" Margin="0,0,8,0"
+                              SelectedIndex="{Binding UsageDaysIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="7" />
+                        <ComboBoxItem Content="14" />
+                        <ComboBoxItem Content="30" />
+                        <ComboBoxItem Content="90" />
+                    </ComboBox>
+                    <Button Content="{Binding L[Btn_Refresh]}" Style="{StaticResource SecondaryButton}"
+                            Command="{Binding LoadUsageCommand}" IsEnabled="{Binding UsageCanLoad}" />
+                </StackPanel>
+            </Grid>
+
+            <!-- no key -->
+            <Border Style="{StaticResource Card}"
+                    Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource Warn}"
+                    Visibility="{Binding UsageHasKey, Converter={StaticResource NotBoolVis}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding L[Usage_NeedKey]}" Style="{StaticResource Body}" />
+                    <TextBlock Text="{Binding L[Usage_KeyHint]}" Style="{StaticResource Caption}"
+                               Margin="0,8,0,0" FontWeight="Normal" />
+                </StackPanel>
+            </Border>
+
+            <!-- error -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14"
+                    Background="{DynamicResource AlertSoft}" BorderBrush="{DynamicResource Alert}"
+                    Visibility="{Binding UsageHasError, Converter={StaticResource BoolVis}}">
+                <TextBlock Text="{Binding UsageError}" Style="{StaticResource Body}"
+                           Foreground="{DynamicResource Alert}" />
+            </Border>
+
+            <!-- totals -->
+            <Grid Visibility="{Binding UsageHasData, Converter={StaticResource BoolVis}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding L[Usage_Total]}" Style="{StaticResource Caption}" />
+                        <TextBlock Text="{Binding UsageTotal}" Style="{StaticResource Display}" FontSize="24"
+                                   Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding L[Usage_Input]}" Style="{StaticResource Caption}" />
+                        <TextBlock Text="{Binding UsageInput}" Style="{StaticResource Display}" FontSize="24"
+                                   Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="4" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding L[Usage_Output]}" Style="{StaticResource Caption}" />
+                        <TextBlock Text="{Binding UsageOutput}" Style="{StaticResource Display}" FontSize="24"
+                                   Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="6" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding L[Usage_Cost]}" Style="{StaticResource Caption}" />
+                        <TextBlock Text="{Binding UsageCost}" Style="{StaticResource Display}" FontSize="24"
+                                   Foreground="{DynamicResource Accent}" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- daily chart -->
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0"
+                    Visibility="{Binding UsageHasData, Converter={StaticResource BoolVis}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding L[Usage_Days]}" Style="{StaticResource Caption}" />
+                    <ItemsControl ItemsSource="{Binding UsageBars}" Margin="0,16,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,3,0" VerticalAlignment="Bottom"
+                                            ToolTip="{Binding Tooltip}">
+                                    <Border Width="14" Height="{Binding Height}" CornerRadius="3,3,0,0"
+                                            Background="{DynamicResource Accent}" VerticalAlignment="Bottom" />
+                                    <TextBlock Text="{Binding Label}" Style="{StaticResource Caption}"
+                                               FontSize="8.5" Margin="0,5,0,0" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- by model -->
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0"
+                    Visibility="{Binding UsageHasData, Converter={StaticResource BoolVis}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding L[Usage_ByModel]}" Style="{StaticResource H2}" Margin="0,0,0,12" />
+                    <ItemsControl ItemsSource="{Binding UsageModels}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,9">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Model}" Style="{StaticResource Body}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{Binding TotalTokens}"
+                                               Style="{StaticResource Mono}" Margin="14,0,0,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

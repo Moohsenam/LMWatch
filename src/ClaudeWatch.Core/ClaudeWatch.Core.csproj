@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ClaudeWatch.Core</RootNamespace>
+    <!-- The core library calls Windows-only APIs on purpose. It is compiled for
+         net8.0 (not net8.0-windows) so the logic can be built and unit-tested on
+         any machine; the platform warnings are expected. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

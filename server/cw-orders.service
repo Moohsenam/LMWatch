@@ -1,0 +1,23 @@
+# /etc/systemd/system/cw-orders.service
+[Unit]
+Description=Claude Watch orders
+After=network.target
+
+[Service]
+Type=simple
+User=cworders
+WorkingDirectory=/opt/cw-orders
+ExecStart=/usr/bin/dotnet /opt/cw-orders/ClaudeWatch.Orders.dll
+Environment=CW_DATA=/var/lib/cw-orders
+Environment=CW_URLS=http://127.0.0.1:5080
+Environment=DOTNET_EnableDiagnostics=0
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cw-orders
+
+[Install]
+WantedBy=multi-user.target

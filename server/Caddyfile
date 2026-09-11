@@ -1,0 +1,5 @@
+# Replace the domain. Everything else can stay as it is.
+orders.example.com {
+    encode gzip
+    reverse_proxy orders:5080
+}

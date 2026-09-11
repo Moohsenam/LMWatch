@@ -1,0 +1,25 @@
+<Application x:Class="ClaudeWatch.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ClaudeWatch.App"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme/Dark.xaml" />
+                <ResourceDictionary Source="Theme/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolVis" />
+            <local:InverseBoolToVisibilityConverter x:Key="NotBoolVis" />
+            <local:KindToBrushConverter x:Key="KindBrush" />
+            <local:EmptyToVisibilityConverter x:Key="EmptyVis" />
+            <local:AdapterBrushConverter x:Key="AdapterBrush" />
+            <local:HexToBrushConverter x:Key="HexBrush" />
+            <local:PlanNameConverter x:Key="PlanName" />
+            <local:PlanPriceConverter x:Key="PlanPrice" />
+            <local:PlanPeriodConverter x:Key="PlanPeriod" />
+            <local:PlanNoteConverter x:Key="PlanNote" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

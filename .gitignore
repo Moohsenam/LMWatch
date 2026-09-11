@@ -1,0 +1,22 @@
+# build output
+bin/
+obj/
+build/
+publish/
+*.user
+
+# the in-place update channel used by the desktop app
+_update/
+
+# logs and local state
+setup-log.txt
+error.log
+*.log
+
+# server data: orders, settings, the generated password. Never in the repo.
+server/data/
+data/
+FIRST-RUN-PASSWORD.txt
+
+# packaged betas
+beta/

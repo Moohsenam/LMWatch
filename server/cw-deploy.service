@@ -1,0 +1,11 @@
+# /etc/systemd/system/cw-deploy.service
+# Checks the repo and, if it moved, rebuilds and restarts the orders service.
+[Unit]
+Description=Pull and deploy Claude Watch orders
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/srv/claude-watch
+ExecStart=/srv/claude-watch/server/deploy.sh

@@ -1,0 +1,32 @@
+# One command deploy:  docker compose up -d --build
+#
+# Caddy sits in front and gets an HTTPS certificate by itself. Put your domain
+# in Caddyfile first, and point its DNS at this machine.
+services:
+  orders:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - orders-data:/data
+    expose:
+      - "5080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - orders
+
+volumes:
+  orders-data:
+  caddy-data:
+  caddy-config:

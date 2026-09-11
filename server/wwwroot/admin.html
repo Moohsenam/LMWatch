@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>پنل سفارش‌ها</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='none' stroke='%23d97757' stroke-width='4'/><circle cx='16' cy='16' r='4' fill='%23eeeae2'/></svg>">
+</head>
+<body>
+
+<!-- ================================ login ================================ -->
+<div class="wrap" id="loginView">
+  <header class="top">
+    <div class="mark"><i></i></div>
+    <div><h1>پنل سفارش‌ها</h1><p>ورود مدیر</p></div>
+  </header>
+
+  <section class="card">
+    <label class="field">
+      <span>رمز عبور</span>
+      <input type="password" id="password" autocomplete="current-password">
+    </label>
+    <div id="loginError" class="banner bad hidden"></div>
+    <button class="primary" id="loginBtn" style="width:100%">ورود</button>
+    <p class="note">رمز اولین اجرا در فایل FIRST-RUN-PASSWORD.txt کنار برنامه نوشته شده.</p>
+  </section>
+</div>
+
+<!-- ================================ panel ================================ -->
+<div class="wrap wide hidden" id="panelView">
+  <header class="top">
+    <div class="mark"><i></i></div>
+    <div><h1 id="brandName">پنل سفارش‌ها</h1><p id="brandSub">مدیریت سفارش‌ها</p></div>
+    <div class="spacer"></div>
+    <button class="ghost" id="logout">خروج</button>
+  </header>
+
+  <div class="tabs">
+    <button class="on" data-tab="orders">سفارش‌ها</button>
+    <button data-tab="pricing">قیمت‌ها</button>
+    <button data-tab="settings">تنظیمات</button>
+  </div>
+
+  <!-- ------------------------------ orders ------------------------------ -->
+  <div id="tab-orders">
+    <div class="tiles" id="tiles"></div>
+
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="جستجو در کد، ایمیل، آیدی، یادداشت">
+      <select id="statusFilter">
+        <option value="">همه وضعیت‌ها</option>
+        <option value="New">ثبت شده</option>
+        <option value="Confirmed">تأیید شده</option>
+        <option value="AwaitingPayment">در انتظار تسویه</option>
+        <option value="Paid">پرداخت شد</option>
+        <option value="Done">انجام شد</option>
+        <option value="Cancelled">لغو شد</option>
+      </select>
+      <button class="secondary small" id="refresh">به‌روزرسانی</button>
+      <button class="secondary small" id="exportCsv">خروجی CSV</button>
+    </div>
+
+    <div class="list" id="orderList"></div>
+    <p class="hint hidden" id="emptyList" style="text-align:center;padding:30px">سفارشی نیست.</p>
+  </div>
+
+  <!-- ------------------------------ pricing ----------------------------- -->
+  <div id="tab-pricing" class="hidden">
+    <section class="card">
+      <h2 class="section">نرخ دلار</h2>
+      <p class="hint">قیمت‌ها از این نرخ ساخته می‌شوند. اگر خودکار بودن جواب نداد، دستی بگذارید؛ دستی هیچ‌وقت خراب نمی‌شود.</p>
+
+      <div id="rateState" class="banner" style="margin-top:14px"></div>
+
+      <label class="field"><span>منبع نرخ</span>
+        <select id="rateMode">
+          <option value="auto">خودکار از یک سرویس</option>
+          <option value="manual">دستی، خودم وارد می‌کنم</option>
+        </select>
+      </label>
+
+      <div id="manualBox">
+        <label class="field"><span>نرخ دلار به تومان</span>
+          <input type="number" id="manualRate" dir="ltr" placeholder="224000"></label>
+      </div>
+
+      <div id="autoBox">
+        <label class="field"><span>سرویس آماده</span>
+          <select id="ratePreset">
+            <option value="">— انتخاب کنید تا آدرس و مسیر پر شود —</option>
+          </select>
+        </label>
+        <label class="field"><span>آدرس سرویس</span>
+          <input type="text" id="rateUrl" dir="ltr" placeholder="https://..."></label>
+        <label class="field"><span>مسیر عدد در پاسخ</span>
+          <input type="text" id="ratePath" dir="ltr" placeholder="price  یا  currency[symbol=USD].price"></label>
+        <p class="hint">نقطه برای کلید، <code dir="ltr">[۰]</code> برای عضو آرایه، و <code dir="ltr">[symbol=USD]</code> برای پیدا کردن ردیف دلار در فهرست ارزها.</p>
+        <label class="field"><span>واحد پاسخ</span>
+          <select id="rateUnit">
+            <option value="toman">تومان</option>
+            <option value="rial">ریال</option>
+          </select>
+        </label>
+        <label class="field"><span>هر چند دقیقه به‌روز شود</span>
+          <input type="number" id="rateMinutes" dir="ltr" min="5" max="1440"></label>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="secondary small" id="testRate">آزمایش این سرویس</button>
+          <button class="secondary small" id="refreshRate">همین حالا بگیر</button>
+        </div>
+        <div id="testMsg" class="banner hidden" style="margin-top:12px"></div>
+      </div>
+
+      <details style="margin-top:16px">
+        <summary class="hint" style="cursor:pointer">محدوده منطقی نرخ</summary>
+        <p class="hint" style="margin-top:8px">اگر سرویس عدد بی‌ربطی بدهد، بیرون از این محدوده نادیده گرفته می‌شود و نرخ قبلی می‌ماند.</p>
+        <label class="field"><span>کمترین (تومان)</span><input type="number" id="rateMin" dir="ltr"></label>
+        <label class="field"><span>بیشترین (تومان)</span><input type="number" id="rateMax" dir="ltr"></label>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2 class="section">سود و گرد کردن</h2>
+      <label class="field"><span>درصد اضافه روی همه قیمت‌ها</span>
+        <input type="number" id="markup" dir="ltr" step="0.5" min="0" max="300"></label>
+      <label class="field"><span>گرد کردن به بالا تا نزدیک‌ترین (تومان)</span>
+        <input type="number" id="roundTo" dir="ltr" placeholder="10000"></label>
+      <label class="field row"><span>قیمت دلاری هم به مشتری نشان داده شود</span>
+        <input type="checkbox" id="showUsd"></label>
+      <p class="hint">خاموش باشد، مشتری فقط یک عدد تومانی می‌بیند و درصد شما جایی پیدا نیست.</p>
+    </section>
+
+    <section class="card">
+      <h2 class="section">پیش‌نمایش</h2>
+      <p class="hint">همان چیزی که در اپ دیده می‌شود.</p>
+      <div id="pricePreview" style="margin-top:14px"></div>
+    </section>
+
+    <div id="pricingMsg" class="banner ok hidden"></div>
+    <button class="primary" id="savePricing">ذخیره قیمت‌ها</button>
+  </div>
+
+  <!-- ----------------------------- settings ----------------------------- -->
+  <div id="tab-settings" class="hidden">
+    <section class="card">
+      <h2 class="section">اطلاعات کسب‌وکار</h2>
+      <label class="field"><span>نام</span><input type="text" id="cfgName"></label>
+      <label class="field"><span>راه ارتباطی که به مشتری نشان داده می‌شود</span><input type="text" id="cfgContact" placeholder="@yourhandle"></label>
+      <label class="field"><span>لینک آن راه ارتباطی</span><input type="text" id="cfgContactUrl" dir="ltr" placeholder="https://t.me/yourhandle"></label>
+      <label class="field"><span>اطلاعیه بالای فرم (خالی بگذارید تا نمایش داده نشود)</span><textarea id="cfgNotice" maxlength="600"></textarea></label>
+    </section>
+
+    <section class="card">
+      <h2 class="section">اشتراک‌ها</h2>
+      <p class="hint">کلید انگلیسی و بدون فاصله باشد. قیمت دلاری همان چیزی است که Anthropic می‌گیرد؛ تبدیل و درصد را خود سرور انجام می‌دهد. تیک یعنی نمایش داده شود.</p>
+      <div id="planRows" style="margin-top:14px"></div>
+      <button class="secondary small" id="addPlan">افزودن ردیف</button>
+    </section>
+
+    <div id="settingsMsg" class="banner ok hidden"></div>
+    <button class="primary" id="saveSettings">ذخیره تنظیمات</button>
+
+    <section class="card" style="margin-top:26px">
+      <h2 class="section">تغییر رمز</h2>
+      <label class="field"><span>رمز فعلی</span><input type="password" id="pwCurrent" autocomplete="current-password"></label>
+      <label class="field"><span>رمز جدید (حداقل ۱۰ نویسه)</span><input type="password" id="pwNext" autocomplete="new-password"></label>
+      <div id="pwMsg" class="banner bad hidden"></div>
+      <button class="secondary" id="changePw">تغییر رمز</button>
+    </section>
+  </div>
+</div>
+
+<!-- ================================ drawer ================================ -->
+<div class="overlay hidden" id="overlay">
+  <div class="drawer" id="drawer"></div>
+</div>
+
+<script src="/admin.js"></script>
+</body>
+</html>

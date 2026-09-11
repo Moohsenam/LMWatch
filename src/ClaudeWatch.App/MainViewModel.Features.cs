@@ -1,0 +1,930 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+using ClaudeWatch.Core;
+
+namespace ClaudeWatch.App;
+
+/// <summary>One bar of the usage chart, already sized for the view.</summary>
+public sealed class UsageBar
+{
+    public string Label { get; init; } = string.Empty;
+    public double Height { get; init; }
+    public string Tooltip { get; init; } = string.Empty;
+}
+
+/// <summary>A plan as the order page shows it, with the label in the current language.</summary>
+public sealed class OrderPlanChoice
+{
+    public string Key { get; init; } = string.Empty;
+    public string Text { get; init; } = string.Empty;
+    public override string ToString() => Text;
+}
+
+public sealed partial class MainViewModel
+{
+    public static readonly int[] GraceChoices = { 0, 10, 20, 30, 60 };
+    public static readonly int[] UsageDayChoices = { 7, 14, 30, 90 };
+    public static readonly int[] IpRefreshChoices = { 30, 60, 300, 900 };
+    private static readonly int[] MonthChoices = { 1, 3, 6, 12 };
+    private static readonly string[] ContactKinds = { "telegram", "whatsapp", "email", "phone" };
+
+    private readonly UsageClient _usage = new();
+    private readonly OrdersClient _orders = new();
+    private readonly PricingClient _pricing = new();
+
+    private bool _ipCopied;
+    private bool _usageBusy;
+    private bool _orderBusy;
+
+    // ==================================================================== IP
+
+    public bool ShowIpCard => _settings.ShowIpPanel;
+
+    public string IpValue
+    {
+        get
+        {
+            var info = _snapshot?.Ip;
+            if (info is null)
+            {
+                return L["Ip_Checking"];
+            }
+
+            return info.Ok && !string.IsNullOrWhiteSpace(info.Ip) ? info.Ip : L["Ip_Failed"];
+        }
+    }
+
+    public string IpWhere => _snapshot?.Ip?.Where ?? string.Empty;
+
+    public string IpNetwork => _snapshot?.Ip?.Network ?? string.Empty;
+
+    public string IpSource
+    {
+        get
+        {
+            var info = _snapshot?.Ip;
+            return info is { Ok: true } && !string.IsNullOrWhiteSpace(info.Source)
+                ? $"{L["Ip_Source"]} {info.Source}"
+                : string.Empty;
+        }
+    }
+
+    public bool ShowIpLeak => _snapshot?.IpLeak == true;
+
+    public Brush IpBrush
+    {
+        get
+        {
+            if (_snapshot?.IpLeak == true)
+            {
+                return Palette("Alert");
+            }
+
+            var info = _snapshot?.Ip;
+            if (info is null || !info.Ok)
+            {
+                return Palette("TextDim");
+            }
+
+            return _snapshot?.VpnConnected == true ? Palette("Good") : Palette("Text");
+        }
+    }
+
+    public string IpCopyLabel => _ipCopied ? L["Ip_Copied"] : L["Ip_Copy"];
+
+    public string KnownHomeIp => string.IsNullOrWhiteSpace(_settings.KnownHomeIp)
+        ? "—"
+        : _settings.KnownHomeIp;
+
+    // ================================================= the countdown warning
+
+    public bool GraceActive => _snapshot?.InGrace == true;
+
+    public DateTimeOffset? GraceEndsAt => _snapshot?.GraceEndsAt;
+
+    public int GraceTotalSeconds => Math.Max(1, _settings.GraceSeconds);
+
+    public string GraceTitle => _snapshot?.GraceReasonKey == "Reason_TimeZone"
+        ? L["Grace_Clock"]
+        : L["Grace_Vpn"];
+
+    public string GraceBody => _snapshot?.GraceReasonKey == "Reason_TimeZone"
+        ? L["Grace_BodyClock"]
+        : L["Grace_Body"];
+
+    /// <summary>The reassuring line once the tunnel is back before the timer ran out.</summary>
+    public string GraceResolvedText => _snapshot?.VpnConnected == true
+        ? L["Grace_Back"]
+        : L["Grace_Fixed"];
+
+    public int GraceIndex
+    {
+        get
+        {
+            var index = Array.IndexOf(GraceChoices, Edit.GraceSeconds);
+            return index < 0 ? 1 : index;
+        }
+        set
+        {
+            var index = Math.Clamp(value, 0, GraceChoices.Length - 1);
+            Edit.GraceSeconds = GraceChoices[index];
+            Raise(nameof(GraceIndex));
+        }
+    }
+
+    // ============================================================ auto setup
+
+    public bool SetupComplete { get; private set; }
+
+    public string SetupStatus
+    {
+        get
+        {
+            if (SetupComplete)
+            {
+                return L["Setup_Ready"];
+            }
+
+            return PrivilegedHelper.IsInstalled() || FirewallController.IsReady()
+                ? L["Setup_Partial"]
+                : L["Setup_Missing"];
+        }
+    }
+
+    public Brush SetupBrush => SetupComplete ? Palette("Good") : Palette("Warn");
+
+    public string ClaudeFoundVia { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Everything the app can arrange for itself: find Claude, pick a language,
+    /// and register the privileged pieces in one approval. Runs on a background
+    /// thread at startup so the window is up first.
+    /// </summary>
+    public async Task RunAutoSetupAsync(bool force = false)
+    {
+        // ---- 1. where is Claude
+        var current = _settings.ClaudeExecutablePath;
+
+        if (force || string.IsNullOrWhiteSpace(current) || !File.Exists(current))
+        {
+            var found = await Task.Run(() => ClaudeFinder.Find()).ConfigureAwait(true);
+
+            if (found.Found)
+            {
+                _settings.ClaudeExecutablePath = found.Path;
+                Edit.ClaudeExecutablePath = found.Path;
+                ClaudeFoundVia = found.Source;
+                _log.Add(ActivityKind.Good, L["Claude_Found"], $"{found.Path} ({found.Source})");
+            }
+            else if (!_settings.FirstRunCompleted)
+            {
+                _log.Add(ActivityKind.Warning, L["Claude_Missing"]);
+            }
+
+            Raise(nameof(ClaudePathDisplay));
+            Raise(nameof(ClaudeFoundVia));
+        }
+
+        // ---- 2. language, on the very first run only
+        if (!_settings.FirstRunCompleted &&
+            CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("fa", StringComparison.OrdinalIgnoreCase))
+        {
+            _settings.Language = "fa";
+            Edit.Language = "fa";
+            L.Language = "fa";
+            Raise(nameof(L));
+            Raise(nameof(Flow));
+            Raise(nameof(LanguageIndex));
+        }
+
+        // ---- 3. the parts that need administrator rights
+        var path = _settings.ClaudeExecutablePath;
+        var tasksReady = PrivilegedHelper.IsInstalled();
+        var firewallReady = FirewallController.IsReady();
+        var ruleMatchesClaude = string.Equals(_settings.FirewallRulePath, path, StringComparison.OrdinalIgnoreCase);
+        var hasClaude = !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+
+        var complete = tasksReady && (!hasClaude || (firewallReady && ruleMatchesClaude));
+
+        // Ask once. After that only a moved Claude, or the button in Settings,
+        // brings the prompt back.
+        var shouldRun = force
+                        || (!complete && !_settings.FirstRunCompleted)
+                        || (!complete && _settings.UsePrivilegedHelper && hasClaude && !ruleMatchesClaude);
+
+        if (!shouldRun)
+        {
+            SetupComplete = complete;
+            FinishSetupState();
+            return;
+        }
+
+        var (ok, message) = await Task
+            .Run(() => PrivilegedHelper.InstallEverything(_settings, hasClaude ? path : string.Empty))
+            .ConfigureAwait(true);
+
+        if (ok)
+        {
+            _settings.UsePrivilegedHelper = true;
+            Edit.UsePrivilegedHelper = true;
+
+            if (hasClaude)
+            {
+                _settings.EnableFirewallKillSwitch = true;
+                Edit.EnableFirewallKillSwitch = true;
+                _settings.FirewallRulePath = path;
+                Edit.FirewallRulePath = path;
+            }
+
+            SetupComplete = PrivilegedHelper.IsInstalled() && (!hasClaude || FirewallController.IsReady());
+            _log.Add(ActivityKind.Good, "Setup finished",
+                string.IsNullOrWhiteSpace(message) ? "No more approval prompts." : message);
+        }
+        else
+        {
+            SetupComplete = false;
+            _log.Add(ActivityKind.Warning, "Setup was not completed",
+                string.IsNullOrWhiteSpace(message) ? L["Setup_Declined"] : message);
+        }
+
+        FinishSetupState();
+    }
+
+    private void FinishSetupState()
+    {
+        _settings.FirstRunCompleted = true;
+        Edit.FirstRunCompleted = true;
+
+        HelperInstalled = PrivilegedHelper.IsInstalled();
+        Persist();
+
+        Raise(nameof(SetupComplete));
+        Raise(nameof(SetupStatus));
+        Raise(nameof(SetupBrush));
+        Raise(nameof(HelperInstalled));
+        Raise(nameof(HelperStatus));
+        RaiseAllSettings();
+        RefreshFeatureText();
+    }
+
+    /// <summary>Picks up Claude's path from a process that is running right now.</summary>
+    private void LearnClaudePathFromProcesses()
+    {
+        if (!string.IsNullOrWhiteSpace(_settings.ClaudeExecutablePath) &&
+            File.Exists(_settings.ClaudeExecutablePath))
+        {
+            return;
+        }
+
+        var running = _snapshot?.Processes.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Path));
+        if (running is null)
+        {
+            return;
+        }
+
+        _settings.ClaudeExecutablePath = running.Path;
+        Edit.ClaudeExecutablePath = running.Path;
+        ClaudeFoundVia = "running process";
+        _log.Add(ActivityKind.Good, L["Claude_Found"], running.Path);
+        Raise(nameof(ClaudePathDisplay));
+        Raise(nameof(ClaudeFoundVia));
+    }
+
+    // ============================================================== firewall
+
+    public bool FirewallReady => _snapshot?.FirewallReady ?? false;
+
+    public string FirewallStatus
+    {
+        get
+        {
+            if (!_settings.EnableFirewallKillSwitch)
+            {
+                return L["Set_Firewall_Off"];
+            }
+
+            return _snapshot?.FirewallBlocking switch
+            {
+                true => L["Fw_Blocked"],
+                false => L["Fw_Open"],
+                _ => L["Fw_Unknown"]
+            };
+        }
+    }
+
+    public Brush FirewallBrush => _snapshot?.FirewallBlocking switch
+    {
+        true => Palette("Alert"),
+        false => Palette("Good"),
+        _ => Palette("TextDim")
+    };
+
+    public bool ShowFirewallChip => _settings.EnableFirewallKillSwitch;
+
+    // ================================================================= usage
+
+    public ObservableCollection<UsageBar> UsageBars { get; } = new();
+
+    public ObservableCollection<UsageModel> UsageModels { get; } = new();
+
+    public bool UsageBusy
+    {
+        get => _usageBusy;
+        private set { _usageBusy = value; Raise(nameof(UsageBusy)); Raise(nameof(UsageCanLoad)); }
+    }
+
+    public bool UsageCanLoad => !_usageBusy && !string.IsNullOrWhiteSpace(Edit.AdminApiKey);
+
+    public bool UsageHasKey => !string.IsNullOrWhiteSpace(_settings.AdminApiKey);
+
+    public string UsageTotal { get; private set; } = "—";
+    public string UsageInput { get; private set; } = "—";
+    public string UsageOutput { get; private set; } = "—";
+    public string UsageCost { get; private set; } = "—";
+    public string UsageUpdated { get; private set; } = string.Empty;
+    public string UsageError { get; private set; } = string.Empty;
+    public bool UsageHasError => !string.IsNullOrWhiteSpace(UsageError);
+    public bool UsageHasData => UsageBars.Count > 0;
+
+    public int UsageDaysIndex
+    {
+        get => Math.Max(0, Array.IndexOf(UsageDayChoices, Edit.UsageDays));
+        set
+        {
+            var index = Math.Clamp(value, 0, UsageDayChoices.Length - 1);
+            Edit.UsageDays = UsageDayChoices[index];
+            _settings.UsageDays = Edit.UsageDays;
+            Raise(nameof(UsageDaysIndex));
+        }
+    }
+
+    public int IpRefreshIndex
+    {
+        get => Math.Max(0, Array.IndexOf(IpRefreshChoices, Edit.IpRefreshSeconds));
+        set
+        {
+            var index = Math.Clamp(value, 0, IpRefreshChoices.Length - 1);
+            Edit.IpRefreshSeconds = IpRefreshChoices[index];
+            Raise(nameof(IpRefreshIndex));
+        }
+    }
+
+    // ================================================================ orders
+
+    public ObservableCollection<OrderPlanChoice> OrderPlans { get; } = new();
+
+    public OrderDraft Draft { get; private set; } = new();
+
+    public OrderPlanChoice? SelectedPlan { get; set; }
+
+    public bool OrdersConfigured => !string.IsNullOrWhiteSpace(_settings.OrdersBaseUrl);
+
+    public string OrderServiceName { get; private set; } = string.Empty;
+
+    public string OrderNotice { get; private set; } = string.Empty;
+
+    public bool HasOrderNotice => !string.IsNullOrWhiteSpace(OrderNotice);
+
+    public bool OrderBusy
+    {
+        get => _orderBusy;
+        private set { _orderBusy = value; Raise(nameof(OrderBusy)); Raise(nameof(OrderCanSubmit)); }
+    }
+
+    public bool OrderCanSubmit => !_orderBusy && OrdersConfigured;
+
+    public string OrderCode { get; private set; } = string.Empty;
+    public bool OrderPlaced { get; private set; }
+    public string OrderError { get; private set; } = string.Empty;
+    public bool OrderHasError => !string.IsNullOrWhiteSpace(OrderError);
+
+    public string TrackCode { get; set; } = string.Empty;
+    public string TrackAnswer { get; private set; } = string.Empty;
+    public bool TrackHasAnswer => !string.IsNullOrWhiteSpace(TrackAnswer);
+
+    public int OrderMonthsIndex
+    {
+        get => Math.Max(0, Array.IndexOf(MonthChoices, Draft.Months));
+        set
+        {
+            var index = Math.Clamp(value, 0, MonthChoices.Length - 1);
+            Draft.Months = MonthChoices[index];
+            Raise(nameof(OrderMonthsIndex));
+        }
+    }
+
+    public int OrderContactKindIndex
+    {
+        get => Math.Max(0, Array.IndexOf(ContactKinds, Draft.ContactKind));
+        set
+        {
+            var index = Math.Clamp(value, 0, ContactKinds.Length - 1);
+            Draft.ContactKind = ContactKinds[index];
+            Raise(nameof(OrderContactKindIndex));
+        }
+    }
+
+    // ============================================================== commands
+
+    public RelayCommand RefreshIpCommand { get; private set; } = null!;
+    public RelayCommand CopyIpCommand { get; private set; } = null!;
+    public RelayCommand SetupEverythingCommand { get; private set; } = null!;
+    public RelayCommand InstallFirewallCommand { get; private set; } = null!;
+    public RelayCommand RemoveFirewallCommand { get; private set; } = null!;
+    public RelayCommand LoadUsageCommand { get; private set; } = null!;
+    public RelayCommand LoadPricesCommand { get; private set; } = null!;
+    public RelayCommand BuyPlanCommand { get; private set; } = null!;
+    public RelayCommand PlaceOrderCommand { get; private set; } = null!;
+    public RelayCommand NewOrderCommand { get; private set; } = null!;
+    public RelayCommand TrackOrderCommand { get; private set; } = null!;
+    public RelayCommand ReloadOrderServiceCommand { get; private set; } = null!;
+
+    private void BuildFeatureCommands()
+    {
+        RefreshIpCommand = new RelayCommand(() => Guard.RefreshAddressNow());
+
+        CopyIpCommand = new RelayCommand(() =>
+        {
+            var info = _snapshot?.Ip;
+            if (info is not { Ok: true } || string.IsNullOrWhiteSpace(info.Ip))
+            {
+                return;
+            }
+
+            try
+            {
+                Clipboard.SetText(info.Ip);
+                _ipCopied = true;
+                Raise(nameof(IpCopyLabel));
+
+                var reset = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                reset.Tick += (s, _) =>
+                {
+                    _ipCopied = false;
+                    Raise(nameof(IpCopyLabel));
+                    ((System.Windows.Threading.DispatcherTimer)s!).Stop();
+                };
+                reset.Start();
+            }
+            catch
+            {
+                // The clipboard can be held by another program; not worth a dialog.
+            }
+        });
+
+        SetupEverythingCommand = new RelayCommand(() => _ = RunAutoSetupAsync(force: true));
+
+        InstallFirewallCommand = new RelayCommand(() =>
+        {
+            var path = string.IsNullOrWhiteSpace(_settings.ClaudeExecutablePath)
+                ? ClaudeLauncher.Detect()
+                : _settings.ClaudeExecutablePath;
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                MessageBox.Show(L["Fw_NoClaude"], L["Confirm_Title"], MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var (ok, message) = FirewallController.Install(path);
+
+            if (ok)
+            {
+                Edit.EnableFirewallKillSwitch = true;
+                _settings.EnableFirewallKillSwitch = true;
+                _log.Add(ActivityKind.Good, "Firewall kill switch set up", "Switching needs no more approval.");
+                Persist();
+            }
+            else if (!string.IsNullOrWhiteSpace(message))
+            {
+                MessageBox.Show(message, L["Confirm_Title"], MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            RaiseAllSettings();
+            RefreshFeatureText();
+        });
+
+        RemoveFirewallCommand = new RelayCommand(() =>
+        {
+            FirewallController.Uninstall();
+            Edit.EnableFirewallKillSwitch = false;
+            _settings.EnableFirewallKillSwitch = false;
+            _log.Add(ActivityKind.Info, "Firewall kill switch removed");
+            Persist();
+            RaiseAllSettings();
+            RefreshFeatureText();
+        });
+
+        LoadUsageCommand = new RelayCommand(() => _ = LoadUsageAsync());
+
+        LoadPricesCommand = new RelayCommand(() => _ = LoadPricesAsync());
+
+        BuyPlanCommand = new RelayCommand(p =>
+        {
+            // Straight from a price card into the order form with the plan set,
+            // because making someone pick the plan twice is how orders get lost.
+            if (p is PricedPlan plan)
+            {
+                Draft = new OrderDraft { ContactKind = "telegram", Months = 1, Plan = plan.Key };
+                OrderPlaced = false;
+                OrderCode = string.Empty;
+                OrderError = string.Empty;
+
+                var choice = OrderPlans.FirstOrDefault(
+                    c => string.Equals(c.Key, plan.Key, StringComparison.OrdinalIgnoreCase));
+
+                if (choice is not null)
+                {
+                    SelectedPlan = choice;
+                }
+
+                Raise(nameof(Draft));
+                Raise(nameof(SelectedPlan));
+                Raise(nameof(OrderPlaced));
+                Raise(nameof(OrderCode));
+                Raise(nameof(OrderError));
+                Raise(nameof(OrderHasError));
+                Raise(nameof(OrderMonthsIndex));
+                Raise(nameof(OrderContactKindIndex));
+            }
+
+            Page = AppPage.Orders;
+        });
+
+        PlaceOrderCommand = new RelayCommand(() => _ = PlaceOrderAsync());
+
+        NewOrderCommand = new RelayCommand(() =>
+        {
+            Draft = new OrderDraft { ContactKind = "telegram", Months = 1 };
+            OrderPlaced = false;
+            OrderCode = string.Empty;
+            OrderError = string.Empty;
+            Raise(nameof(Draft));
+            Raise(nameof(OrderPlaced));
+            Raise(nameof(OrderCode));
+            Raise(nameof(OrderError));
+            Raise(nameof(OrderHasError));
+            Raise(nameof(OrderMonthsIndex));
+            Raise(nameof(OrderContactKindIndex));
+        });
+
+        TrackOrderCommand = new RelayCommand(() => _ = TrackOrderAsync());
+
+        ReloadOrderServiceCommand = new RelayCommand(() => _ = LoadOrderServiceAsync());
+    }
+
+    // =============================================================== usage
+
+    private async Task LoadUsageAsync()
+    {
+        var key = Edit.AdminApiKey?.Trim() ?? string.Empty;
+
+        UsageError = string.Empty;
+        Raise(nameof(UsageError));
+        Raise(nameof(UsageHasError));
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            UsageError = L["Usage_Err_no_key"];
+            Raise(nameof(UsageError));
+            Raise(nameof(UsageHasError));
+            return;
+        }
+
+        UsageBusy = true;
+
+        try
+        {
+            var report = await _usage.FetchAsync(key, Edit.UsageDays).ConfigureAwait(true);
+
+            if (!report.Ok)
+            {
+                var known = L["Usage_Err_" + report.Error];
+                UsageError = known == "Usage_Err_" + report.Error ? L["Usage_Err_network"] : known;
+                UsageBars.Clear();
+                UsageModels.Clear();
+            }
+            else
+            {
+                BuildUsageView(report);
+            }
+        }
+        catch (Exception ex)
+        {
+            UsageError = ex.Message;
+        }
+        finally
+        {
+            UsageBusy = false;
+            Raise(nameof(UsageError));
+            Raise(nameof(UsageHasError));
+            Raise(nameof(UsageHasData));
+        }
+    }
+
+    private void BuildUsageView(UsageReport report)
+    {
+        UsageBars.Clear();
+        UsageModels.Clear();
+
+        var peak = report.Series.Count == 0 ? 0 : report.Series.Max(d => d.TotalTokens);
+
+        foreach (var day in report.Series)
+        {
+            var height = peak <= 0 ? 2 : Math.Max(2, 120.0 * day.TotalTokens / peak);
+            UsageBars.Add(new UsageBar
+            {
+                Label = day.Day.ToString("MM-dd", CultureInfo.InvariantCulture),
+                Height = height,
+                Tooltip = $"{day.Day:yyyy-MM-dd}\n{Compact(day.TotalTokens)} tokens"
+            });
+        }
+
+        foreach (var model in report.Models.Take(8))
+        {
+            UsageModels.Add(model);
+        }
+
+        UsageTotal = Compact(report.TotalTokens);
+        UsageInput = Compact(report.TotalInput);
+        UsageOutput = Compact(report.TotalOutput);
+        UsageCost = report.CostAvailable
+            ? report.TotalCostUsd.ToString("C2", CultureInfo.GetCultureInfo("en-US"))
+            : "—";
+        UsageUpdated = $"{L["Usage_Updated"]} {DateTime.Now:HH:mm}";
+
+        Raise(nameof(UsageTotal));
+        Raise(nameof(UsageInput));
+        Raise(nameof(UsageOutput));
+        Raise(nameof(UsageCost));
+        Raise(nameof(UsageUpdated));
+        Raise(nameof(UsageHasData));
+    }
+
+    private static string Compact(long value)
+    {
+        if (value >= 1_000_000_000) return (value / 1_000_000_000d).ToString("0.##", CultureInfo.InvariantCulture) + "B";
+        if (value >= 1_000_000) return (value / 1_000_000d).ToString("0.##", CultureInfo.InvariantCulture) + "M";
+        if (value >= 1_000) return (value / 1_000d).ToString("0.#", CultureInfo.InvariantCulture) + "K";
+        return value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    // ================================================================== buy
+
+    public ObservableCollection<PricedPlan> Prices { get; } = new();
+
+    public bool PricesLoading { get; private set; }
+    public bool PricesReady { get; private set; }
+    public bool PricesFromCache { get; private set; }
+    public bool PricesStale { get; private set; }
+    public DateTimeOffset? PricesUpdatedAt { get; private set; }
+
+    public bool ShowPriceCards => PricesReady && Prices.Count > 0;
+
+    public bool ShowPriceEmpty => !PricesLoading && !ShowPriceCards;
+
+    /// <summary>Why the buy page has nothing on it, in the user's language.</summary>
+    public string PriceEmptyText
+    {
+        get
+        {
+            if (!OrdersConfigured)
+            {
+                return L["Buy_NoServer"];
+            }
+
+            return PricesReady ? L["Buy_NoRate"] : L["Buy_Unreachable"];
+        }
+    }
+
+    /// <summary>The small print under the cards: how old these numbers are.</summary>
+    public string PriceFootnote
+    {
+        get
+        {
+            if (!ShowPriceCards)
+            {
+                return string.Empty;
+            }
+
+            if (PricesFromCache)
+            {
+                return L["Buy_Cached"];
+            }
+
+            if (PricesStale)
+            {
+                return L["Buy_Stale"];
+            }
+
+            if (PricesUpdatedAt is { } at)
+            {
+                return L["Buy_Updated"] + " " + at.ToLocalTime().ToString("yyyy/MM/dd HH:mm");
+            }
+
+            return string.Empty;
+        }
+    }
+
+    public async Task LoadPricesAsync()
+    {
+        PricesLoading = true;
+        RaisePrices();
+
+        var list = await _pricing.LoadAsync(_settings.OrdersBaseUrl).ConfigureAwait(true);
+
+        Prices.Clear();
+
+        // A plan with no price is not a price card. The API-credit row belongs on
+        // the order form, where the customer says how much they want.
+        foreach (var plan in list.Plans.Where(p => !p.Variable && p.Toman > 0))
+        {
+            Prices.Add(plan);
+        }
+
+        PricesReady = list.Ok && list.RateReady;
+        PricesFromCache = list.FromCache;
+        PricesStale = list.RateStale;
+        PricesUpdatedAt = list.UpdatedAt;
+        PricesLoading = false;
+
+        RaisePrices();
+    }
+
+    private void RaisePrices()
+    {
+        Raise(nameof(PricesLoading));
+        Raise(nameof(PricesReady));
+        Raise(nameof(PricesFromCache));
+        Raise(nameof(PricesStale));
+        Raise(nameof(ShowPriceCards));
+        Raise(nameof(ShowPriceEmpty));
+        Raise(nameof(PriceEmptyText));
+        Raise(nameof(PriceFootnote));
+    }
+
+    // ============================================================== orders
+
+    public async Task LoadOrderServiceAsync()
+    {
+        OrderPlans.Clear();
+        OrderServiceName = string.Empty;
+        OrderNotice = string.Empty;
+
+        if (!OrdersConfigured)
+        {
+            RaiseOrderService();
+            return;
+        }
+
+        var service = await _orders.GetServiceAsync(_settings.OrdersBaseUrl).ConfigureAwait(true);
+
+        if (service is not null)
+        {
+            OrderServiceName = service.BusinessName;
+            OrderNotice = service.Notice;
+
+            foreach (var plan in service.Plans)
+            {
+                OrderPlans.Add(new OrderPlanChoice
+                {
+                    Key = plan.Key,
+                    Text = plan.Display(L.IsRightToLeft)
+                });
+            }
+
+            SelectedPlan = OrderPlans.FirstOrDefault();
+            Raise(nameof(SelectedPlan));
+        }
+
+        RaiseOrderService();
+    }
+
+    private void RaiseOrderService()
+    {
+        Raise(nameof(OrderServiceName));
+        Raise(nameof(OrderNotice));
+        Raise(nameof(HasOrderNotice));
+        Raise(nameof(OrdersConfigured));
+        Raise(nameof(OrderCanSubmit));
+    }
+
+    private async Task PlaceOrderAsync()
+    {
+        OrderError = string.Empty;
+        Raise(nameof(OrderError));
+        Raise(nameof(OrderHasError));
+
+        if (SelectedPlan is null)
+        {
+            OrderError = L["Ord_Err_unknown_plan"];
+            Raise(nameof(OrderError));
+            Raise(nameof(OrderHasError));
+            return;
+        }
+
+        Draft.Plan = SelectedPlan.Key;
+        OrderBusy = true;
+
+        try
+        {
+            var result = await _orders.PlaceAsync(_settings.OrdersBaseUrl, Draft).ConfigureAwait(true);
+
+            if (result.Ok)
+            {
+                OrderCode = result.Code;
+                OrderPlaced = true;
+                _log.Add(ActivityKind.Good, "Order placed", result.Code);
+                Raise(nameof(OrderCode));
+                Raise(nameof(OrderPlaced));
+            }
+            else
+            {
+                var known = L["Ord_Err_" + result.Error];
+                OrderError = known == "Ord_Err_" + result.Error ? L["Ord_Err_failed"] : known;
+            }
+        }
+        catch (Exception ex)
+        {
+            OrderError = ex.Message;
+        }
+        finally
+        {
+            OrderBusy = false;
+            Raise(nameof(OrderError));
+            Raise(nameof(OrderHasError));
+        }
+    }
+
+    private async Task TrackOrderAsync()
+    {
+        TrackAnswer = string.Empty;
+        Raise(nameof(TrackAnswer));
+        Raise(nameof(TrackHasAnswer));
+
+        if (!OrdersConfigured || string.IsNullOrWhiteSpace(TrackCode))
+        {
+            return;
+        }
+
+        var view = await _orders.TrackAsync(_settings.OrdersBaseUrl, TrackCode).ConfigureAwait(true);
+
+        if (view is null)
+        {
+            TrackAnswer = L["Ord_Err_not_found"];
+        }
+        else
+        {
+            var status = L["Ord_St_" + view.Status];
+            if (status == "Ord_St_" + view.Status)
+            {
+                status = view.Status;
+            }
+
+            TrackAnswer = string.IsNullOrWhiteSpace(view.Message)
+                ? $"{view.Code} · {view.Plan} · {status}"
+                : $"{view.Code} · {view.Plan} · {status}\n{view.Message}";
+        }
+
+        Raise(nameof(TrackAnswer));
+        Raise(nameof(TrackHasAnswer));
+    }
+
+    // ============================================================== refresh
+
+    private void RefreshFeatureText()
+    {
+        Raise(nameof(IpValue));
+        Raise(nameof(IpWhere));
+        Raise(nameof(IpNetwork));
+        Raise(nameof(IpSource));
+        Raise(nameof(IpBrush));
+        Raise(nameof(ShowIpLeak));
+        Raise(nameof(ShowIpCard));
+        Raise(nameof(KnownHomeIp));
+        Raise(nameof(FirewallReady));
+        Raise(nameof(FirewallStatus));
+        Raise(nameof(FirewallBrush));
+        Raise(nameof(ShowFirewallChip));
+        Raise(nameof(UsageHasKey));
+        Raise(nameof(UsageCanLoad));
+        Raise(nameof(OrdersConfigured));
+        Raise(nameof(OrderCanSubmit));
+        Raise(nameof(SetupStatus));
+        Raise(nameof(SetupBrush));
+        Raise(nameof(ClaudeFoundVia));
+        Raise(nameof(GraceActive));
+        Raise(nameof(GraceEndsAt));
+        Raise(nameof(GraceTitle));
+        Raise(nameof(GraceBody));
+        Raise(nameof(GraceResolvedText));
+        Raise(nameof(GraceTotalSeconds));
+    }
+}

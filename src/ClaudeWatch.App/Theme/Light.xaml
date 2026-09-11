@@ -1,0 +1,31 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="Bg" Color="#F6F4EF" />
+    <SolidColorBrush x:Key="Surface" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SurfaceAlt" Color="#EFECE4" />
+    <SolidColorBrush x:Key="Sidebar" Color="#EDEAE2" />
+    <SolidColorBrush x:Key="Line" Color="#DCD7CC" />
+    <SolidColorBrush x:Key="LineSoft" Color="#E7E3DA" />
+    <SolidColorBrush x:Key="Text" Color="#23211E" />
+    <SolidColorBrush x:Key="TextDim" Color="#6A645C" />
+    <SolidColorBrush x:Key="TextFaint" Color="#948E86" />
+    <SolidColorBrush x:Key="Good" Color="#3E8659" />
+    <SolidColorBrush x:Key="Warn" Color="#B4762A" />
+    <SolidColorBrush x:Key="Alert" Color="#BE4740" />
+    <SolidColorBrush x:Key="Info" Color="#4E75A8" />
+    <SolidColorBrush x:Key="OnAccent" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Hover" Color="#000000" Opacity="0.05" />
+    <SolidColorBrush x:Key="Pressed" Color="#000000" Opacity="0.10" />
+    <SolidColorBrush x:Key="GoodSoft" Color="#3E8659" Opacity="0.12" />
+    <SolidColorBrush x:Key="WarnSoft" Color="#B4762A" Opacity="0.12" />
+    <SolidColorBrush x:Key="AlertSoft" Color="#BE4740" Opacity="0.12" />
+    <SolidColorBrush x:Key="InfoSoft" Color="#4E75A8" Opacity="0.12" />
+
+    <SolidColorBrush x:Key="TextDimSoft" Color="#948E86" Opacity="0.14" />
+
+    <SolidColorBrush x:Key="Accent" Color="#C4633F" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#C4633F" Opacity="0.16" />
+    <SolidColorBrush x:Key="AccentHover" Color="#C4633F" Opacity="0.85" />
+
+</ResourceDictionary>
