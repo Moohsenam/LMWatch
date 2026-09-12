@@ -47,6 +47,7 @@ public static class Program
         EachServiceIsFoundSeparately();
         TheLockedStateEnforcesNothing();
         TheOldDataFolderIsCarriedOver();
+        TheScriptsAgreeOnTheExecutableName();
 
         Console.WriteLine(new string('-', 48));
 
@@ -747,6 +748,63 @@ public static class Program
         Check("and they still migrate into a profile", loaded.Services.Count > 0);
 
         try { Directory.Delete(appData, true); } catch { }
+    }
+
+    /// <summary>
+    /// The installer looks for the executable by name after building it. When
+    /// the app was renamed, the project produced SafeChat.exe while the script
+    /// still checked for ClaudeWatch.exe, so a perfectly good build reported
+    /// failure. Nothing in a compiler catches that, so it is checked here.
+    /// </summary>
+    private static void TheScriptsAgreeOnTheExecutableName()
+    {
+        Console.WriteLine("\nThe scripts and the project agree");
+
+        var root = RepoRoot();
+        if (root is null)
+        {
+            Check("the repository was found", false);
+            return;
+        }
+
+        var csproj = File.ReadAllText(Path.Combine(root, "src", "ClaudeWatch.App", "ClaudeWatch.App.csproj"));
+        var match = System.Text.RegularExpressions.Regex.Match(csproj, @"<AssemblyName>([^<]+)</AssemblyName>");
+
+        Check("the project names its assembly", match.Success);
+        if (!match.Success)
+        {
+            return;
+        }
+
+        var assembly = match.Groups[1].Value.Trim();
+        var setup = File.ReadAllText(Path.Combine(root, "tools", "setup.ps1"));
+
+        Check($"the installer looks for {assembly}.exe", setup.Contains($"'{assembly}.exe'"));
+        Check("the installer does not look for the old name", !setup.Contains("'ClaudeWatch.exe'"));
+
+        // Stopping the running app before replacing its files needs the process
+        // name, which is the assembly name without the extension.
+        Check($"the installer stops the {assembly} process", setup.Contains($"'{assembly}'"));
+
+        var uninstall = File.ReadAllText(Path.Combine(root, "tools", "uninstall.ps1"));
+        Check("the uninstaller stops the right process", uninstall.Contains($"Get-Process -Name '{assembly}'"));
+    }
+
+    private static string? RepoRoot()
+    {
+        var here = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (here is not null)
+        {
+            if (File.Exists(Path.Combine(here.FullName, "ClaudeWatch.sln")))
+            {
+                return here.FullName;
+            }
+
+            here = here.Parent;
+        }
+
+        return null;
     }
 
     // -------------------------------------------------------------- helpers

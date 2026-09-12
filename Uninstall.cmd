@@ -1,4 +1,4 @@
 @echo off
-title Claude Watch removal
+title SafeChat removal
 cd /d "%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\uninstall.ps1"

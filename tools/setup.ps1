@@ -1,5 +1,5 @@
 <#
-    Claude Watch — first-run setup.
+    SafeChat — first-run setup.
 
     Finds or installs the .NET SDK, builds the app, makes Start Menu and Desktop
     shortcuts, and leaves a shareable zip in beta\. Run it once; after that the
@@ -45,7 +45,7 @@ function Fail([string]$text) {
 }
 
 Write-Host ''
-Write-Host '  Claude Watch' -ForegroundColor White
+Write-Host '  SafeChat' -ForegroundColor White
 if ($Rebuild) {
     Write-Host '  Rebuilding in place' -ForegroundColor DarkGray
 }
@@ -55,7 +55,7 @@ else {
 Write-Host ''
 
 function Stop-App {
-    $running = Get-Process -Name 'ClaudeWatch' -ErrorAction SilentlyContinue
+    $running = Get-Process -Name 'SafeChat' -ErrorAction SilentlyContinue
     if (-not $running) { return $false }
 
     Say 'Closing the running app so its files can be replaced.' 'DarkGray'
@@ -275,7 +275,7 @@ if (-not $result.Ok) {
     }
 }
 
-$exe = Join-Path $output 'ClaudeWatch.exe'
+$exe = Join-Path $output 'SafeChat.exe'
 
 if (-not $result.Ok -or -not (Test-Path $exe)) {
     $result.Text | Select-Object -Last 25 | ForEach-Object { Say $_ 'DarkGray' }
@@ -349,7 +349,7 @@ try {
         [Environment]::GetFolderPath('Desktop'),
         (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))) {
 
-        $link = $shell.CreateShortcut((Join-Path $folder 'Claude Watch.lnk'))
+        $link = $shell.CreateShortcut((Join-Path $folder 'SafeChat.lnk'))
         $link.TargetPath = $exe
         $link.WorkingDirectory = $output
         $link.IconLocation = "$exe,0"
@@ -368,7 +368,7 @@ catch {
 # ==================================================================== finish
 
 Write-Host ''
-Say 'Done. Starting Claude Watch...' 'Green'
+Say 'Done. Starting SafeChat...' 'Green'
 Write-Host ''
 
 Start-Process -FilePath $exe -WorkingDirectory $output

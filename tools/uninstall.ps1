@@ -1,5 +1,5 @@
 <#
-    Removes everything Claude Watch put on this machine: shortcuts, the
+    Removes everything SafeChat put on this machine: shortcuts, the
     start-with-Windows entry and the two scheduled tasks. Settings and the
     activity log stay unless you say otherwise.
 #>
@@ -7,20 +7,21 @@
 $ErrorActionPreference = 'SilentlyContinue'
 
 Write-Host ''
-Write-Host '  Claude Watch — removal' -ForegroundColor White
+Write-Host '  SafeChat — removal' -ForegroundColor White
 Write-Host ''
 
-Get-Process -Name 'ClaudeWatch' | Stop-Process -Force
+Get-Process -Name 'SafeChat' | Stop-Process -Force
 Start-Sleep -Milliseconds 400
 
 foreach ($folder in @(
     [Environment]::GetFolderPath('Desktop'),
     (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))) {
+    Remove-Item (Join-Path $folder 'SafeChat.lnk') -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $folder 'Claude Watch.lnk') -Force
 }
 Write-Host '  Shortcuts removed.' -ForegroundColor Gray
 
-Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'ClaudeWatch' -Force
+Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'SafeChat' -Force
 Write-Host '  Start-with-Windows entry removed.' -ForegroundColor Gray
 
 $tasks = @('SafeChat-SetWorkTimeZone', 'SafeChat-SetHomeTimeZone')
@@ -36,7 +37,7 @@ if ($present) {
     Write-Host '  Scheduled tasks removed.' -ForegroundColor Gray
 }
 
-$data = Join-Path $env:APPDATA 'ClaudeWatch'
+$data = Join-Path $env:APPDATA 'SafeChat'
 if (Test-Path $data) {
     Write-Host ''
     $answer = Read-Host '  Also delete your settings and activity log? (y/N)'

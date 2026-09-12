@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title Claude Watch - pull and build
+title SafeChat - pull and build
 cd /d "%~dp0"
 
 rem Replaces the old _update dance. Takes the latest from GitHub and rebuilds.
