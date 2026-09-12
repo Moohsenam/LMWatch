@@ -249,6 +249,39 @@ contains "keys export as csv" 'code,state,service' "$(curl -s -b "$JAR" "$BASE/a
 
 contains "the trial terms are public" 'trialDays' "$(curl -s "$BASE/api/licence/terms")"
 
+# ---------------------------------------------------- dashboard and lookups
+
+STATS="$(curl -s -b "$JAR" "$BASE/api/admin/stats?days=30")"
+contains "the dashboard has a day series" '"series"' "$STATS"
+contains "and the totals behind it" '"totals"' "$STATS"
+contains "and the key counts" '"keys"' "$STATS"
+contains "and the waiting list" '"waiting"' "$STATS"
+check "the range is clamped, not trusted" 200 "$(status -b "$JAR" "$BASE/api/admin/stats?days=99999")"
+check "the dashboard needs a session" 401 "$(status "$BASE/api/admin/stats")"
+
+# A customer looking up their own key: state and days, nothing else.
+LOOKUP="$(curl -s "$BASE/api/keys/$KEY1")"
+contains "a key can be looked up without signing in" '"state"' "$LOOKUP"
+if echo "$LOOKUP" | grep -q 'deviceId\|customer\|note'; then
+  printf '  XX  %s\n' "the lookup leaks nothing private"; FAIL=$((FAIL+1))
+else
+  printf '  ok  %s\n' "the lookup leaks nothing private"; PASS=$((PASS+1))
+fi
+check "an unknown code is a plain 404" 404 "$(status "$BASE/api/keys/SAFE-ZZZZ-ZZZZ-ZZZZ")"
+
+# Issuing a key straight from an order.
+ISSUED="$(curl -s -b "$JAR" -X POST "$BASE/api/admin/orders/$ID/key" -H 'Content-Type: application/json' -H 'X-CW: 1' -d '{}')"
+contains "a key is issued from the order" '"ok":true' "$ISSUED"
+ORDER_KEY="$(echo "$ISSUED" | grep -oE 'SAFE-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}' | head -1)"
+contains "the order now has that key against it" "$ORDER_KEY" \
+  "$(curl -s -b "$JAR" "$BASE/api/admin/orders/$ID/keys")"
+check "issuing needs a session" 401 "$(status -X POST "$BASE/api/admin/orders/$ID/key" -H 'Content-Type: application/json' -H 'X-CW: 1' -d '{}')"
+check "issuing against a missing order is a 404" 404 \
+  "$(status -b "$JAR" -X POST "$BASE/api/admin/orders/nosuchorder/key" -H 'Content-Type: application/json' -H 'X-CW: 1' -d '{}')"
+
+contains "plans say which service they belong to" '"service"' "$(curl -s "$BASE/api/service")"
+contains "and so does the price list" '"service"' "$(curl -s "$BASE/api/pricing")"
+
 check "logging out clears the session" 200 "$(status -b "$JAR" -c "$JAR" -X POST "$BASE/api/admin/logout" -H 'X-CW: 1')"
 check "the list is shut again" 401 "$(status -b "$JAR" "$BASE/api/admin/orders")"
 

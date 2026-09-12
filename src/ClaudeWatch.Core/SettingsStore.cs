@@ -67,6 +67,38 @@ public sealed class SettingsStore
     }
 
     /// <summary>
+    /// Settings as a file to hand to another machine. The licence key is left
+    /// out on purpose: a key belongs to one computer, and copying it into a
+    /// second one would only produce a refusal there and confusion here.
+    /// </summary>
+    public static string Export(GuardSettings settings)
+    {
+        var copy = settings.Clone();
+        copy.LicenceKey = string.Empty;
+        copy.SetupCompleted = true;
+
+        return JsonSerializer.Serialize(copy, Options);
+    }
+
+    /// <summary>
+    /// Reads an exported file. Throws on anything that is not settings, so the
+    /// caller can say so; the current licence key and setup state are kept,
+    /// since those describe this machine rather than the file.
+    /// </summary>
+    public static GuardSettings Import(string json, GuardSettings current)
+    {
+        var imported = JsonSerializer.Deserialize<GuardSettings>(json, Options)
+                       ?? throw new InvalidDataException("That file has no settings in it.");
+
+        Migrate(imported, json);
+
+        imported.LicenceKey = current.LicenceKey;
+        imported.SetupCompleted = current.SetupCompleted;
+
+        return Sanitize(imported);
+    }
+
+    /// <summary>
     /// Moves the pre-services settings shape into the Claude profile. Reads the
     /// raw document because those properties no longer exist on GuardSettings,
     /// so deserialization has already dropped them.

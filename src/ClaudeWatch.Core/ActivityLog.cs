@@ -12,6 +12,23 @@ public enum ActivityKind
     Alert
 }
 
+/// <summary>
+/// Stable names for the handful of events worth counting. Titles are written
+/// for people and get translated and reworded; these never change, so a day's
+/// summary can be counted from them years later.
+/// </summary>
+public static class ActivityCode
+{
+    public const string Stopped = "stopped";
+    public const string Unprotected = "unprotected";
+    public const string VpnUp = "vpn_up";
+    public const string VpnDown = "vpn_down";
+    public const string TimeZone = "timezone";
+    public const string Blocked = "blocked";
+    public const string Unblocked = "unblocked";
+    public const string Paused = "paused";
+}
+
 public sealed class ActivityEvent
 {
     public DateTimeOffset At { get; init; } = DateTimeOffset.Now;
@@ -19,11 +36,31 @@ public sealed class ActivityEvent
     public string Title { get; init; } = string.Empty;
     public string Detail { get; init; } = string.Empty;
 
+    /// <summary>One of <see cref="ActivityCode"/>, or empty for everything else.</summary>
+    public string Code { get; init; } = string.Empty;
+
     [JsonIgnore]
     public string TimeDisplay => At.ToString("HH:mm:ss");
 
     [JsonIgnore]
     public string DateDisplay => At.ToString("yyyy-MM-dd");
+}
+
+/// <summary>One day's tally, for the "today" card on the dashboard.</summary>
+public sealed class DaySummary
+{
+    public DateTime Day { get; init; }
+    public int Events { get; init; }
+    public int Stops { get; init; }
+    public int Unprotected { get; init; }
+    public int VpnDrops { get; init; }
+    public int TimeZoneChanges { get; init; }
+    public int Blocks { get; init; }
+    public int Pauses { get; init; }
+    public DateTimeOffset? LastIncident { get; init; }
+
+    /// <summary>Nothing went wrong today. The good case, and the common one.</summary>
+    public bool Calm => Stops == 0 && Unprotected == 0 && VpnDrops == 0;
 }
 
 /// <summary>
@@ -46,9 +83,9 @@ public sealed class ActivityLog
 
     public List<ActivityEvent> Items { get; } = new();
 
-    public ActivityEvent Add(ActivityKind kind, string title, string detail = "")
+    public ActivityEvent Add(ActivityKind kind, string title, string detail = "", string code = "")
     {
-        var entry = new ActivityEvent { Kind = kind, Title = title, Detail = detail };
+        var entry = new ActivityEvent { Kind = kind, Title = title, Detail = detail, Code = code };
 
         lock (_gate)
         {
@@ -132,10 +169,38 @@ public sealed class ActivityLog
         }
     }
 
+    /// <summary>
+    /// What the guard actually did on one day. Counted from the codes rather
+    /// than the titles, so translating the app does not change the numbers.
+    /// </summary>
+    public DaySummary SummaryFor(DateTime day)
+    {
+        lock (_gate)
+        {
+            var mine = Items.Where(e => e.At.LocalDateTime.Date == day.Date).ToList();
+
+            return new DaySummary
+            {
+                Day = day.Date,
+                Events = mine.Count,
+                Stops = mine.Count(e => e.Code == ActivityCode.Stopped),
+                Unprotected = mine.Count(e => e.Code == ActivityCode.Unprotected),
+                VpnDrops = mine.Count(e => e.Code == ActivityCode.VpnDown),
+                TimeZoneChanges = mine.Count(e => e.Code == ActivityCode.TimeZone),
+                Blocks = mine.Count(e => e.Code == ActivityCode.Blocked),
+                Pauses = mine.Count(e => e.Code == ActivityCode.Paused),
+                LastIncident = mine
+                    .Where(e => e.Kind is ActivityKind.Alert or ActivityKind.Warning)
+                    .Select(e => (DateTimeOffset?)e.At)
+                    .FirstOrDefault()
+            };
+        }
+    }
+
     public string ExportText()
     {
         var builder = new StringBuilder();
-        builder.AppendLine("Claude Watch — activity log");
+        builder.AppendLine("SafeChat — activity log");
         builder.AppendLine($"Exported {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}");
         builder.AppendLine(new string('-', 60));
 

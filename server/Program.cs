@@ -129,7 +129,7 @@ app.MapGet("/api/service", () =>
         contactUrl = config.ContactUrl,
         notice = config.Notice,
         plans = config.Plans.Where(p => p.Enabled)
-            .Select(p => new { p.Key, p.Label, p.LabelFa, p.PriceHint })
+            .Select(p => new { p.Key, p.Label, p.LabelFa, p.PriceHint, p.Period, p.Service })
     });
 });
 
@@ -335,6 +335,68 @@ app.MapDelete("/api/admin/orders/{id}", (HttpContext context, string id) =>
     return store.Delete(id) ? Results.Json(new { ok = true }) : Results.NotFound();
 });
 
+// The keys already issued against this order, so the panel can say "this one
+// has had its key" instead of leaving it to memory.
+app.MapGet("/api/admin/orders/{id}/keys", (HttpContext context, string id) =>
+{
+    var guard = RequireAdmin(context);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var order = store.ById(id);
+
+    if (order is null)
+    {
+        return Results.NotFound();
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    return Results.Json(new { items = store.KeysForOrder(order.Code).Select(k => k.ToAdmin(now)) });
+});
+
+// Issuing a key for an order, in one press. Everything the key needs is
+// already on the order, so nothing is retyped and nothing gets mistyped.
+app.MapPost("/api/admin/orders/{id}/key", (HttpContext context, string id, OrderKeyRequest? request) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var order = store.ById(id);
+
+    if (order is null)
+    {
+        return Results.NotFound();
+    }
+
+    // A month is charged as 30 days. The owner can stretch it in the keys tab
+    // if a customer needs the benefit of the doubt.
+    var days = request?.Days is > 0 ? request.Days : Math.Max(1, order.Months) * 30;
+
+    var service = order.Service?.ToLowerInvariant() switch
+    {
+        "chatgpt" => "chatgpt",
+        "claude" => "claude",
+        _ => "both"
+    };
+
+    var made = store.MakeKeys(
+        1,
+        Math.Clamp(days, 1, 3650),
+        service,
+        Text.Clip(string.IsNullOrWhiteSpace(order.FullName) ? order.AccountEmail : order.FullName, 120),
+        Text.Clip(order.PlanLabel, 300),
+        order.Code);
+
+    app.Logger.LogInformation("Issued key for order {Code}", order.Code);
+
+    return Results.Json(new { ok = true, code = made[0].Code, days });
+});
+
 app.MapGet("/api/admin/export.csv", (HttpContext context) =>
 {
     var guard = RequireAdmin(context);
@@ -402,7 +464,8 @@ app.MapPut("/api/admin/config", (HttpContext context, ConfigUpdate update) =>
                     Period = Text.Clip(p.Period, 20),
                     Note = Text.Clip(p.Note, 200),
                     NoteFa = Text.Clip(p.NoteFa, 200),
-                    Popular = p.Popular
+                    Popular = p.Popular,
+                    Service = p.Service?.Trim().ToLowerInvariant() == "chatgpt" ? "chatgpt" : "claude"
                 })
                 .ToList();
         }
@@ -467,6 +530,39 @@ app.MapPost("/api/admin/password", (HttpContext context, PasswordChangeRequest r
     auth.SetPassword(request.Next.Trim());
     context.Response.Cookies.Delete(Auth.CookieName);
     return Results.Json(new { ok = true });
+});
+
+app.MapGet("/api/admin/stats", (HttpContext context, int? days) =>
+{
+    var guard = RequireAdmin(context);
+    return guard ?? Results.Json(store.Stats(days ?? 30));
+});
+
+// A customer checking their own key. Deliberately thin: how long is left and
+// nothing else, no device, no customer name, no note.
+app.MapGet("/api/keys/{code}", (HttpContext context, string code) =>
+{
+    if (!limiter.Allow("keylookup:" + ClientKey(context), 10, TimeSpan.FromMinutes(10)))
+    {
+        return Results.Json(new { error = "too_many" }, statusCode: 429);
+    }
+
+    var key = store.KeyByCode(code);
+
+    if (key is null)
+    {
+        return Results.Json(new { error = "not_found" }, statusCode: 404);
+    }
+
+    var now = DateTimeOffset.UtcNow;
+
+    return Results.Json(new
+    {
+        state = key.State(now).ToString(),
+        daysLeft = key.State(now) == KeyState.Active ? key.DaysLeft(now) : 0,
+        expiresAt = key.ExpiresAt,
+        service = key.Service
+    });
 });
 
 // --------------------------------------------------------------- admin keys
@@ -619,6 +715,8 @@ app.MapGet("/api/admin/pricing", (HttpContext context) =>
             p.Key,
             p.Label,
             p.UsdPrice,
+            p.Service,
+            p.Enabled,
             toman = PricingService.Quote(p.UsdPrice, rate, config.Pricing.MarkupPercent, config.Pricing.RoundToToman)
         })
     });

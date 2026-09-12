@@ -227,5 +227,5 @@ curl https://your-domain/api/pricing
 BASE=https://your-domain PASSWORD=your-admin-password ./server/test-api.sh
 ```
 
-The last one runs all 46 API checks against the live server. It creates a test
+The last one runs all 84 API checks against the live server. It creates a test
 order, so run it before you have real ones, or delete the test order after.

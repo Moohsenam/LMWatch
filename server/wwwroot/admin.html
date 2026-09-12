@@ -37,15 +37,65 @@
     <button class="ghost" id="logout">خروج</button>
   </header>
 
-  <div class="tabs">
-    <button class="on" data-tab="orders">سفارش‌ها</button>
+  <div class="tabs" id="tabs">
+    <button class="on" data-tab="home">خانه</button>
+    <button data-tab="orders">سفارش‌ها</button>
     <button data-tab="keys">کلیدها</button>
     <button data-tab="pricing">قیمت‌ها</button>
     <button data-tab="settings">تنظیمات</button>
   </div>
 
+  <!-- ------------------------------- home ------------------------------- -->
+  <div id="tab-home">
+    <div class="tiles" id="homeTiles"></div>
+
+    <section class="card">
+      <div class="cardhead">
+        <div>
+          <h2 class="section" style="margin:0">سفارش‌های هر روز</h2>
+          <p class="hint" id="chartSub">—</p>
+        </div>
+        <div class="seg" id="rangeSeg">
+          <button data-days="14">۱۴ روز</button>
+          <button class="on" data-days="30">۳۰ روز</button>
+          <button data-days="90">۹۰ روز</button>
+        </div>
+      </div>
+
+      <div class="chartbox" id="chartBox">
+        <div class="chart" id="chart"></div>
+        <div class="tip hidden" id="chartTip"></div>
+      </div>
+
+      <details class="tablefold">
+        <summary>همین عددها در جدول</summary>
+        <div class="tablewrap"><table id="chartTable"></table></div>
+      </details>
+    </section>
+
+    <div class="twocol">
+      <section class="card">
+        <h2 class="section">کارهای مانده</h2>
+        <p class="hint">سفارش‌هایی که تازه آمده‌اند یا منتظر تسویه‌اند.</p>
+        <div class="minilist" id="homeWaiting"></div>
+      </section>
+
+      <section class="card">
+        <h2 class="section">کلیدهای رو به پایان</h2>
+        <p class="hint">تا دو هفته آینده تمام می‌شوند. پیش از تمام شدن تمدید را پیشنهاد بدهید.</p>
+        <div class="minilist" id="homeRenewals"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2 class="section">پول</h2>
+      <div class="moneygrid" id="homeMoney"></div>
+      <p class="hint" style="margin-top:10px">دریافتی همان چیزی است که خودتان در سفارش‌ها نوشته‌اید، به هر واحدی که نوشته‌اید؛ جمعش فقط برای دیدن حجم کار است.</p>
+    </section>
+  </div>
+
   <!-- ------------------------------ orders ------------------------------ -->
-  <div id="tab-orders">
+  <div id="tab-orders" class="hidden">
     <div class="tiles" id="tiles"></div>
 
     <div class="toolbar">
@@ -187,7 +237,6 @@
       <div id="pricePreview" style="margin-top:14px"></div>
     </section>
 
-    <div id="pricingMsg" class="banner ok hidden"></div>
     <button class="primary" id="savePricing">ذخیره قیمت‌ها</button>
   </div>
 
@@ -218,7 +267,6 @@
       <button class="secondary small" id="addPlan">افزودن ردیف</button>
     </section>
 
-    <div id="settingsMsg" class="banner ok hidden"></div>
     <button class="primary" id="saveSettings">ذخیره تنظیمات</button>
 
     <section class="card" style="margin-top:26px">
@@ -229,12 +277,20 @@
       <button class="secondary" id="changePw">تغییر رمز</button>
     </section>
   </div>
+
+  <footer class="foot">
+    <kbd>Alt</kbd> + <kbd>۱</kbd>…<kbd>۵</kbd> جابه‌جایی بین بخش‌ها ·
+    <kbd>/</kbd> جستجو · <kbd>r</kbd> به‌روزرسانی · <kbd>Esc</kbd> بستن
+  </footer>
 </div>
 
 <!-- ================================ drawer ================================ -->
 <div class="overlay hidden" id="overlay">
   <div class="drawer" id="drawer"></div>
 </div>
+
+<!-- Short-lived messages. A banner that never leaves stops being read. -->
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="/admin.js"></script>
 </body>

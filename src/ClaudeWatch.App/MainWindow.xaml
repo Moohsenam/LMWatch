@@ -14,6 +14,27 @@
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True">
 
+    <!-- Shortcuts for the things done most: the pages, a refresh, and the two
+         buttons that matter when something is wrong. Ctrl so nothing fires
+         while a name is being typed into a settings box. -->
+    <Window.InputBindings>
+        <KeyBinding Modifiers="Ctrl" Key="D1" Command="{Binding NavigateCommand}" CommandParameter="Dashboard" />
+        <KeyBinding Modifiers="Ctrl" Key="D2" Command="{Binding NavigateCommand}" CommandParameter="Buy" />
+        <KeyBinding Modifiers="Ctrl" Key="D3" Command="{Binding NavigateCommand}" CommandParameter="Orders" />
+        <KeyBinding Modifiers="Ctrl" Key="D4" Command="{Binding NavigateCommand}" CommandParameter="Licence" />
+        <KeyBinding Modifiers="Ctrl" Key="D5" Command="{Binding NavigateCommand}" CommandParameter="Usage" />
+        <KeyBinding Modifiers="Ctrl" Key="D6" Command="{Binding NavigateCommand}" CommandParameter="Processes" />
+        <KeyBinding Modifiers="Ctrl" Key="D7" Command="{Binding NavigateCommand}" CommandParameter="Network" />
+        <KeyBinding Modifiers="Ctrl" Key="D8" Command="{Binding NavigateCommand}" CommandParameter="Activity" />
+        <KeyBinding Modifiers="Ctrl" Key="D9" Command="{Binding NavigateCommand}" CommandParameter="Settings" />
+        <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
+        <KeyBinding Modifiers="Ctrl" Key="R" Command="{Binding RefreshCommand}" />
+        <KeyBinding Modifiers="Ctrl" Key="O" Command="{Binding OpenClaudeCommand}" />
+        <KeyBinding Modifiers="Ctrl+Shift" Key="S" Command="{Binding StopClaudeCommand}" />
+        <KeyBinding Modifiers="Ctrl" Key="S" Command="{Binding SaveCommand}" />
+        <KeyBinding Modifiers="Ctrl" Key="Tab" Command="{Binding NextServiceCommand}" />
+    </Window.InputBindings>
+
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="46"
                             ResizeBorderThickness="6"

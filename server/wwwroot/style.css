@@ -20,6 +20,13 @@
   --radius: 12px;
 }
 
+/* The ChatGPT side of the app wears its own green. Only the accent moves; the
+   surfaces stay put, so the page reads as one product in two moods. */
+body[data-service="chatgpt"] {
+  --accent: #10a37f;
+  --accent-soft: rgba(16, 163, 127, .16);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -93,6 +100,7 @@ input[type=text], input[type=email], input[type=password], input[type=number], s
   transition: border-color .12s;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
 textarea { min-height: 84px; resize: vertical; line-height: 1.6; }
 select { cursor: pointer; }
 /* The honeypot has to be invisible without widening the page: an off-screen
@@ -224,10 +232,16 @@ button:disabled { opacity: .4; cursor: default; }
 .plan-row input.p { max-width: 130px; }
 .plan-row input.u { max-width: 80px; }
 .plan-row select.per { max-width: 100px; flex: 0 0 auto; }
+.plan-row select.svc { max-width: 120px; flex: 0 0 auto; }
 .plan-row input[type="checkbox"] { flex: 0 0 auto; }
 
-.field.row { flex-direction: row; align-items: center; gap: 10px; }
-.field.row input[type="checkbox"] { width: auto; }
+/* A label with its checkbox on the same line. label.field is display:block, so
+   this has to set display:flex itself or the box drops onto its own row. */
+.field.row { display: flex; flex-direction: row; align-items: center; gap: 12px; }
+.field.row > span { margin-bottom: 0; flex: 1; }
+.field.row input[type="checkbox"] {
+  width: 17px; height: 17px; flex: none; accent-color: var(--accent); cursor: pointer;
+}
 
 footer.foot { text-align: center; color: var(--faint); font-size: 11.5px; margin-top: 40px; }
 
@@ -247,9 +261,150 @@ footer.foot { text-align: center; color: var(--faint); font-size: 11.5px; margin
 .key-row .who { color: var(--dim); font-size: 12.5px; flex: 1; min-width: 120px; }
 .key-row .acts { display: flex; gap: 6px; margin-inline-start: auto; }
 
+/* ------------------------------------------------------------- dashboard */
+
+.cardhead { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.cardhead > :first-child { flex: 1 1 200px; }
+
+/* A segmented control: one choice out of a few, no dropdown to open. */
+.seg { display: flex; background: var(--surface-alt); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.seg button { background: transparent; color: var(--dim); padding: 5px 11px; font-size: 12px; border-radius: 7px; }
+.seg button.on { background: var(--accent-soft); color: var(--accent); }
+
+.chartbox { position: relative; }
+.chart { width: 100%; }
+/* The chart is laid out in physical coordinates, and SVG's text-anchor swaps
+   sides in an RTL context — which put the end labels outside the picture. The
+   words inside each label still shape right-to-left on their own. */
+.chart svg { display: block; width: 100%; height: auto; direction: ltr; }
+.chart .bar { fill: var(--accent); transition: fill .1s; }
+.chart .col:hover .bar, .chart .col.on .bar { fill: var(--text); }
+.chart .grid { stroke: var(--line-soft); stroke-width: 1; }
+.chart .base { stroke: var(--line); stroke-width: 1; }
+.chart .tick { fill: var(--faint); font-size: 10px; }
+.chart .hit { fill: transparent; }
+.chart .col:hover .hit { fill: rgba(255, 255, 255, .03); }
+
+/* The tooltip follows the pointer, so it must never intercept it. */
+.tip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--surface-alt); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 11px; font-size: 12px;
+  white-space: nowrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+  transform: translate(-50%, -100%);
+}
+.tip .big { font-weight: 700; font-size: 13px; }
+.tip .sub { color: var(--dim); font-size: 11.5px; }
+
+/* The same numbers without the picture, for anyone the picture does not serve. */
+.tablefold { margin-top: 14px; }
+.tablefold summary { cursor: pointer; color: var(--dim); font-size: 12.5px; }
+.tablewrap { overflow: auto; max-height: 320px; margin-top: 10px; }
+.tablewrap table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.tablewrap th, .tablewrap td { text-align: start; padding: 5px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.tablewrap th { color: var(--faint); font-weight: 700; font-size: 11.5px; }
+
+.twocol { display: flex; gap: 16px; flex-wrap: wrap; }
+.twocol > * { flex: 1 1 320px; margin-bottom: 16px; }
+
+.minilist { display: flex; flex-direction: column; }
+.minirow {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 12.5px;
+}
+.minirow:last-child { border-bottom: none; }
+.minirow.click { cursor: pointer; }
+.minirow.click:hover .who { color: var(--text); }
+.minirow .who { color: var(--dim); flex: 1; min-width: 100px; }
+.minirow .far { margin-inline-start: auto; color: var(--faint); font-size: 11.5px; white-space: nowrap; }
+.minilist .none { color: var(--faint); font-size: 12.5px; padding: 10px 0; }
+
+.quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+
+.moneygrid { display: flex; gap: 12px; flex-wrap: wrap; }
+.moneygrid > div { flex: 1 1 160px; background: var(--surface-alt); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.moneygrid .k { font-size: 11.5px; color: var(--faint); font-weight: 700; }
+.moneygrid .v { font-size: 19px; font-weight: 700; margin-top: 3px; }
+
+.tile.link { cursor: pointer; transition: border-color .12s; }
+.tile.link:hover { border-color: var(--accent); }
+.tile .sub { font-size: 11px; color: var(--faint); margin-top: 2px; }
+
+/* ---------------------------------------------------------------- prices */
+
+.plans { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.plancard {
+  position: relative; flex: 1 1 170px;
+  background: var(--surface-alt); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px 16px 14px;
+}
+.plancard.pop { border-color: var(--accent); }
+.plancard .tag {
+  position: absolute; inset-block-start: -9px; inset-inline-start: 14px;
+  background: var(--accent); color: #1a1512;
+  font-size: 10.5px; font-weight: 700; border-radius: 20px; padding: 2px 9px;
+}
+.plancard .name { font-size: 13px; font-weight: 700; }
+.plancard .price { font-size: 17px; font-weight: 700; margin-top: 6px; }
+.plancard .per { font-size: 11.5px; color: var(--faint); font-weight: 600; }
+.plancard .pnote { font-size: 11.5px; color: var(--dim); margin-top: 8px; line-height: 1.6; }
+
+.quote {
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 9px; padding: 11px 14px; margin-bottom: 16px;
+}
+.quote .k { font-size: 12.5px; color: var(--dim); }
+.quote .q { font-size: 16px; font-weight: 700; color: var(--accent); margin-inline-start: auto; }
+
+/* ---------------------------------------------------------------- toasts */
+
+.toasts {
+  position: fixed; inset-block-end: 18px; inset-inline-start: 18px;
+  z-index: 60; display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  background: var(--surface-alt); border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 9px; padding: 11px 15px; font-size: 13px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  animation: toastIn .16s ease-out;
+  max-width: 360px;
+}
+.toast.ok { border-inline-start-color: var(--good); }
+.toast.bad { border-inline-start-color: var(--alert); }
+.toast.out { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ----------------------------------------------------------- tabs & focus */
+
+.tabs {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg); padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+  overflow-x: auto; scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { white-space: nowrap; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus-visible { outline-offset: 1px; }
+
+kbd {
+  font-family: inherit; font-size: 10.5px; font-weight: 700;
+  background: var(--surface-alt); border: 1px solid var(--line);
+  border-radius: 5px; padding: 1px 5px; color: var(--dim);
+}
+
 /* Key states. Named apart from .pill so the order-status pills keep their shape. */
 .kpill { border-radius: 4px; padding: 2px 8px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
 .kpill.Unused  { background: var(--info-soft);  color: var(--info); }
+
+/* Which service a key unlocks, in that service's own colour. */
+.kpill.svc-claude  { background: rgba(217, 119, 87, .14); color: #d97757; }
+.kpill.svc-chatgpt { background: rgba(16, 163, 127, .14); color: #10a37f; }
+.kpill.svc-both    { background: var(--surface-alt); color: var(--dim); border: 1px solid var(--line); }
+
 .kpill.Active  { background: var(--good-soft);  color: var(--good); }
 .kpill.Expired { background: var(--warn-soft);  color: var(--warn); }
 .kpill.Revoked { background: var(--alert-soft); color: var(--alert); }

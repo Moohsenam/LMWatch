@@ -96,7 +96,7 @@ if [ -n "$DOMAIN" ]; then BIND="http://127.0.0.1:5080"; else BIND="http://0.0.0.
 say "systemd service"
 cat > /etc/systemd/system/cw-orders.service <<UNIT
 [Unit]
-Description=Claude Watch orders
+Description=SafeChat orders
 After=network.target
 
 [Service]

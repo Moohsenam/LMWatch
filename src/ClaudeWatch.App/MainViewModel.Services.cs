@@ -94,6 +94,25 @@ public sealed partial class MainViewModel
         RefreshBrushes();
     }
 
+    /// <summary>
+    /// The keyboard's way through the switcher: the next enabled service after
+    /// this one, wrapping round. With one service enabled it does nothing.
+    /// </summary>
+    public void NextService()
+    {
+        var enabled = _settings.Services.Where(s => s.Enabled).ToList();
+
+        if (enabled.Count < 2)
+        {
+            return;
+        }
+
+        var at = enabled.FindIndex(s =>
+            string.Equals(s.Key, _settings.ActiveServiceKey, StringComparison.OrdinalIgnoreCase));
+
+        SwitchService(enabled[(at + 1) % enabled.Count].Key);
+    }
+
     // ============================================================== licence
 
     public LicenceStatus Licence => _licence.Status;

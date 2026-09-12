@@ -185,6 +185,16 @@ public sealed class Strings
 
         ["Act_Title"] = "Activity",
         ["Act_Empty"] = "Nothing has happened yet.",
+
+        ["Today_Title"] = "Today",
+        ["Today_Calm"] = "Nothing needed stopping today.",
+        ["Today_Busy"] = "The guard stepped in today.",
+        ["Today_Stops"] = "times {app} was stopped",
+        ["Today_VpnDrops"] = "VPN drops",
+        ["Today_TimeZone"] = "clock changes",
+        ["Today_Blocks"] = "times traffic was cut",
+        ["Today_Watching"] = "Watching since midnight.",
+        ["Today_Last"] = "Last one at",
         ["Act_Hint"] = "Kept for",
         ["Act_Days"] = "days",
 
@@ -251,6 +261,11 @@ public sealed class Strings
         ["Set_Retention"] = "Keep the activity log for",
         ["Set_DataFolder"] = "Open the data folder",
         ["Set_ResetHint"] = "Puts every setting back the way it started.",
+        ["Set_Transfer"] = "Move these settings to another computer",
+        ["Set_TransferHint"] = "Saves everything except the key, which belongs to this computer alone.",
+        ["Set_Export"] = "Save to a file",
+        ["Set_Import"] = "Load from a file",
+        ["Set_ImportConfirm"] = "The settings in that file replace the ones here. Your key stays as it is.",
 
         ["About_What"] = "What this does",
         ["About_Body"] = "Claude Watch keeps two conditions true while the Claude desktop app is open: a VPN tunnel is up, and the system clock sits in your work zone. If either one breaks, every matching Claude process is stopped and the clock is put back to your home zone.",
@@ -532,6 +547,16 @@ public sealed class Strings
 
         ["Act_Title"] = "رویدادها",
         ["Act_Empty"] = "هنوز اتفاقی نیفتاده.",
+
+        ["Today_Title"] = "امروز",
+        ["Today_Calm"] = "امروز لازم نشد چیزی بسته شود.",
+        ["Today_Busy"] = "امروز محافظ وارد عمل شد.",
+        ["Today_Stops"] = "بار {app} بسته شد",
+        ["Today_VpnDrops"] = "بار قطعی VPN",
+        ["Today_TimeZone"] = "بار تغییر ساعت",
+        ["Today_Blocks"] = "بار قطع اینترنت",
+        ["Today_Watching"] = "از نیمه‌شب تا حالا زیر نظر است.",
+        ["Today_Last"] = "آخرین مورد ساعت",
         ["Act_Hint"] = "نگهداری تا",
         ["Act_Days"] = "روز",
 
@@ -598,6 +623,11 @@ public sealed class Strings
         ["Set_Retention"] = "نگهداری رویدادها برای",
         ["Set_DataFolder"] = "باز کردن پوشه داده‌ها",
         ["Set_ResetHint"] = "همه تنظیم‌ها به حالت اول برمی‌گردند.",
+        ["Set_Transfer"] = "بردن همین تنظیم‌ها روی یک کامپیوتر دیگر",
+        ["Set_TransferHint"] = "همه‌چیز ذخیره می‌شود جز کلید، که فقط مال همین کامپیوتر است.",
+        ["Set_Export"] = "ذخیره در فایل",
+        ["Set_Import"] = "خواندن از فایل",
+        ["Set_ImportConfirm"] = "تنظیم‌های آن فایل جای تنظیم‌های اینجا را می‌گیرد. کلید شما دست‌نخورده می‌ماند.",
 
         ["About_What"] = "این برنامه چه می‌کند",
         ["About_Body"] = "تا وقتی برنامه کلاد باز است، Claude Watch دو شرط را نگه می‌دارد: تونل VPN برقرار باشد و ساعت سیستم روی منطقه کاری بماند. با شکستن هر کدام، همه پردازش‌های کلاد بسته می‌شوند و ساعت به منطقه خانه برمی‌گردد.",

@@ -13,7 +13,7 @@ public static class Program
 
     public static int Main()
     {
-        Console.WriteLine("Claude Watch — rule tests");
+        Console.WriteLine("SafeChat — rule tests");
         Console.WriteLine(new string('-', 48));
 
         VpnDownBlocksAndStops();
@@ -48,6 +48,8 @@ public static class Program
         TheLockedStateEnforcesNothing();
         TheOldDataFolderIsCarriedOver();
         TheScriptsAgreeOnTheExecutableName();
+        SettingsTravelWithoutTheKey();
+        TheDaySummaryCountsWhatHappened();
 
         Console.WriteLine(new string('-', 48));
 
@@ -788,6 +790,79 @@ public static class Program
 
         var uninstall = File.ReadAllText(Path.Combine(root, "tools", "uninstall.ps1"));
         Check("the uninstaller stops the right process", uninstall.Contains($"Get-Process -Name '{assembly}'"));
+    }
+
+    private static void SettingsTravelWithoutTheKey()
+    {
+        Console.WriteLine();
+        Console.WriteLine("Settings can move to another computer");
+
+        var mine = new GuardSettings
+        {
+            LicenceKey = "SAFE-AAAA-BBBB-CCCC",
+            GraceSeconds = 25,
+            Language = "fa",
+            SetupCompleted = true
+        };
+
+        mine.EnsureServices();
+        mine.Active.RequiredTimeZoneId = "Eastern Standard Time";
+
+        var file = SettingsStore.Export(mine);
+
+        Check("the key is not in the file", !file.Contains("SAFE-AAAA-BBBB-CCCC"));
+        Check("the rest of it is", file.Contains("Eastern Standard Time"));
+
+        // The machine reading it already has a key and has been set up.
+        var theirs = new GuardSettings { LicenceKey = "SAFE-ZZZZ-YYYY-XXXX", SetupCompleted = true };
+        theirs.EnsureServices();
+
+        var loaded = SettingsStore.Import(file, theirs);
+
+        Check("their own key survives the import", loaded.LicenceKey == "SAFE-ZZZZ-YYYY-XXXX");
+        Check("the settings came across", loaded.GraceSeconds == 25 && loaded.Language == "fa");
+        Check("so did the per-service ones", loaded.Active.RequiredTimeZoneId == "Eastern Standard Time");
+
+        var broke = false;
+
+        try
+        {
+            SettingsStore.Import("this is not settings", theirs);
+        }
+        catch
+        {
+            broke = true;
+        }
+
+        Check("a file that is not settings is refused", broke);
+    }
+
+    private static void TheDaySummaryCountsWhatHappened()
+    {
+        Console.WriteLine();
+        Console.WriteLine("The day summary counts codes, not words");
+
+        var log = new ActivityLog();
+
+        log.Add(ActivityKind.Alert, "Whatever this says", "", ActivityCode.Stopped);
+        log.Add(ActivityKind.Alert, "هرچه اینجا نوشته شده", "", ActivityCode.Stopped);
+        log.Add(ActivityKind.Alert, "VPN disconnected", "", ActivityCode.VpnDown);
+        log.Add(ActivityKind.Good, "VPN connected", "", ActivityCode.VpnUp);
+        log.Add(ActivityKind.Info, "Something untagged");
+
+        var today = log.SummaryFor(DateTime.Today);
+
+        Check("both stops are counted whatever they were called", today.Stops == 2);
+        Check("the drop is counted, the reconnect is not a drop", today.VpnDrops == 1);
+        Check("an untagged event still counts as an event", today.Events == 5);
+        Check("a day with a stop is not a calm one", !today.Calm);
+        Check("the last incident is the most recent alert", today.LastIncident is not null);
+
+        var quiet = new ActivityLog();
+        quiet.Add(ActivityKind.Good, "VPN connected", "", ActivityCode.VpnUp);
+
+        Check("a day with nothing wrong is calm", quiet.SummaryFor(DateTime.Today).Calm);
+        Check("yesterday is not today", quiet.SummaryFor(DateTime.Today.AddDays(-1)).Events == 0);
     }
 
     private static string? RepoRoot()

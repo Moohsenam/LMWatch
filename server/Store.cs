@@ -282,6 +282,29 @@ public sealed class Store
         }
     }
 
+    /// <summary>
+    /// Every key issued against one order code, exact match. The general key
+    /// search would also hit a customer name that happens to contain the code,
+    /// which is fine for a search box and wrong for "what did this order get".
+    /// </summary>
+    public IReadOnlyList<LicenceKey> KeysForOrder(string? orderCode)
+    {
+        var wanted = (orderCode ?? string.Empty).Trim();
+
+        if (wanted.Length == 0)
+        {
+            return Array.Empty<LicenceKey>();
+        }
+
+        lock (_gate)
+        {
+            return _keys
+                .Where(k => string.Equals(k.OrderCode, wanted, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(k => k.CreatedAt)
+                .ToList();
+        }
+    }
+
     /// <summary>Makes a batch and writes it once.</summary>
     public List<LicenceKey> MakeKeys(int count, int days, string service, string customer, string note, string orderCode)
     {
@@ -541,6 +564,75 @@ public sealed class Store
                 monthCount = thisMonth.Count,
                 monthCost = thisMonth.Where(o => o.CostAmount.HasValue).Sum(o => o.CostAmount!.Value),
                 monthCharged = thisMonth.Where(o => o.ChargedAmount.HasValue).Sum(o => o.ChargedAmount!.Value)
+            };
+        }
+    }
+
+    /// <summary>
+    /// The numbers behind the dashboard: a day-by-day series plus the totals it
+    /// sums to. Computed here in one pass under the lock rather than by the page
+    /// asking several times.
+    /// </summary>
+    public object Stats(int days)
+    {
+        days = Math.Clamp(days, 7, 180);
+
+        lock (_gate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var from = now.Date.AddDays(-(days - 1));
+
+            var buckets = new List<object>();
+            var recent = _orders.Where(o => o.CreatedAt.UtcDateTime.Date >= from).ToList();
+
+            for (var i = 0; i < days; i++)
+            {
+                var day = from.AddDays(i);
+                var onThatDay = recent.Where(o => o.CreatedAt.UtcDateTime.Date == day).ToList();
+
+                buckets.Add(new
+                {
+                    day = day.ToString("yyyy-MM-dd"),
+                    orders = onThatDay.Count,
+                    paid = onThatDay.Count(o => o.Status is OrderStatus.Paid or OrderStatus.Done)
+                });
+            }
+
+            var settled = _orders.Where(o => o.Status is OrderStatus.Paid or OrderStatus.Done).ToList();
+            var keyNow = DateTimeOffset.UtcNow;
+
+            return new
+            {
+                days,
+                series = buckets,
+                totals = new
+                {
+                    orders = _orders.Count,
+                    open = _orders.Count(o => o.Status is OrderStatus.New or OrderStatus.Confirmed or OrderStatus.AwaitingPayment),
+                    settled = settled.Count,
+                    cost = settled.Where(o => o.CostAmount.HasValue).Sum(o => o.CostAmount!.Value),
+                    charged = settled.Where(o => o.ChargedAmount.HasValue).Sum(o => o.ChargedAmount!.Value),
+                    inWindow = recent.Count
+                },
+                keys = new
+                {
+                    active = _keys.Count(k => k.State(keyNow) == KeyState.Active),
+                    unused = _keys.Count(k => k.State(keyNow) == KeyState.Unused),
+                    endingSoon = _keys.Count(k => k.State(keyNow) == KeyState.Active && k.DaysLeft(keyNow) <= 7),
+                    expired = _keys.Count(k => k.State(keyNow) == KeyState.Expired)
+                },
+                // Which orders need attention, newest first. The panel's to-do list.
+                waiting = _orders
+                    .Where(o => o.Status is OrderStatus.New or OrderStatus.AwaitingPayment)
+                    .OrderByDescending(o => o.CreatedAt)
+                    .Take(8)
+                    .Select(o => new { o.Id, o.Code, o.FullName, o.PlanLabel, status = o.Status.ToString(), o.CreatedAt }),
+                // Keys about to run out, so a renewal can be offered before it lapses.
+                renewals = _keys
+                    .Where(k => k.State(keyNow) == KeyState.Active && k.DaysLeft(keyNow) <= 14)
+                    .OrderBy(k => k.ExpiresAt)
+                    .Take(8)
+                    .Select(k => new { k.Code, k.Customer, daysLeft = k.DaysLeft(keyNow), k.ExpiresAt })
             };
         }
     }

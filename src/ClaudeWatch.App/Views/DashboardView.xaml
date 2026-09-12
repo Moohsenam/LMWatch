@@ -192,6 +192,42 @@
                 </Border>
             </Grid>
 
+            <!-- today -->
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding L[Today_Title]}" Style="{StaticResource H2}" />
+                        <TextBlock Grid.Column="1" Text="{Binding TodayFooter}" Style="{StaticResource Caption}"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+
+                    <TextBlock Text="{Binding TodayHeadline}" Style="{StaticResource Body}" Margin="0,8,0,0" />
+
+                    <ItemsControl ItemsSource="{Binding TodayStats}" Margin="0,12,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource SurfaceAlt}" CornerRadius="8"
+                                        Padding="12,8" Margin="0,0,8,8">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Count}" FontSize="17" FontWeight="Bold"
+                                                   Foreground="{DynamicResource Accent}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Label}" Style="{StaticResource Caption}"
+                                                   Margin="8,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <!-- controls -->
             <Border Style="{StaticResource Card}" Margin="0,14,0,0">
                 <StackPanel>

@@ -96,6 +96,13 @@ public sealed class Plan
     public string PriceHint { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// claude or chatgpt. Which list the plan appears in. Old configs have no
+    /// value here and every plan in them was a Claude one, so that is what an
+    /// empty field means.
+    /// </summary>
+    public string Service { get; set; } = "claude";
+
     /// <summary>What Anthropic charges. Zero means the amount is up to the customer.</summary>
     public decimal UsdPrice { get; set; }
 
@@ -213,6 +220,33 @@ public sealed class ServiceConfig
             {
                 Key = "api", Label = "API credit", LabelFa = "کردیت API",
                 PriceHint = "any amount", UsdPrice = 0m, Period = string.Empty,
+                Note = "Tell us the amount you want.", NoteFa = "مبلغ دلخواهتان را بگویید."
+            },
+            // OpenAI's own published figures, same date. The panel is where
+            // these get corrected too.
+            new()
+            {
+                Key = "gpt-plus", Label = "ChatGPT Plus", LabelFa = "چت‌جی‌پی‌تی پلاس",
+                PriceHint = "$20 / month", UsdPrice = 20m, Period = "month",
+                Service = "chatgpt", Popular = true
+            },
+            new()
+            {
+                Key = "gpt-pro", Label = "ChatGPT Pro", LabelFa = "چت‌جی‌پی‌تی پرو",
+                PriceHint = "$200 / month", UsdPrice = 200m, Period = "month",
+                Service = "chatgpt"
+            },
+            new()
+            {
+                Key = "gpt-business", Label = "ChatGPT Business", LabelFa = "چت‌جی‌پی‌تی بیزینس",
+                PriceHint = "$25 / seat / month", UsdPrice = 25m, Period = "seat",
+                Service = "chatgpt"
+            },
+            new()
+            {
+                Key = "gpt-api", Label = "OpenAI API credit", LabelFa = "کردیت API اوپن‌ای‌آی",
+                PriceHint = "any amount", UsdPrice = 0m, Period = string.Empty,
+                Service = "chatgpt",
                 Note = "Tell us the amount you want.", NoteFa = "مبلغ دلخواهتان را بگویید."
             }
         }

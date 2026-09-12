@@ -26,6 +26,19 @@ public enum AppPage
     About
 }
 
+/// <summary>One count on the "today" card: a number and what it counted.</summary>
+public sealed class TodayStat
+{
+    public TodayStat(int count, string label)
+    {
+        Count = count;
+        Label = label;
+    }
+
+    public int Count { get; }
+    public string Label { get; }
+}
+
 public sealed class NotificationRequest
 {
     public string Title { get; init; } = string.Empty;
@@ -271,6 +284,55 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         : $"{Friendly(_snapshot.CurrentTimeZoneId)}  →  {Friendly(_snapshot.TargetTimeZoneId)}";
 
     public IEnumerable<ActivityEvent> RecentEvents => Events.Take(6);
+
+    // ---------------------------------------------------------------- today
+
+    /// <summary>One line and a few counts: what the guard did since midnight.</summary>
+    public DaySummary Today => _log.SummaryFor(DateTime.Today);
+
+    public string TodayHeadline => Today.Calm ? L["Today_Calm"] : L["Today_Busy"];
+
+    public string TodayFooter
+    {
+        get
+        {
+            var today = Today;
+
+            return today.LastIncident is { } last
+                ? $"{L["Today_Last"]} {last.ToString("HH:mm", CultureInfo.InvariantCulture)}"
+                : L["Today_Watching"];
+        }
+    }
+
+    /// <summary>
+    /// Only the counts that are not zero. A row of noughts says nothing and
+    /// makes a calm day look like a busy one.
+    /// </summary>
+    public IEnumerable<TodayStat> TodayStats
+    {
+        get
+        {
+            var today = Today;
+
+            var all = new[]
+            {
+                new TodayStat(today.Stops, L["Today_Stops"]),
+                new TodayStat(today.VpnDrops, L["Today_VpnDrops"]),
+                new TodayStat(today.Blocks, L["Today_Blocks"]),
+                new TodayStat(today.TimeZoneChanges, L["Today_TimeZone"])
+            };
+
+            return all.Where(stat => stat.Count > 0);
+        }
+    }
+
+    private void RaiseToday()
+    {
+        Raise(nameof(Today));
+        Raise(nameof(TodayHeadline));
+        Raise(nameof(TodayFooter));
+        Raise(nameof(TodayStats));
+    }
 
     public string HeaderSummary
     {
@@ -554,7 +616,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
-                FileName = $"claude-watch-activity-{DateTime.Now:yyyy-MM-dd}.txt",
+                FileName = $"safechat-activity-{DateTime.Now:yyyy-MM-dd}.txt",
                 Filter = "Text file (*.txt)|*.txt|All files (*.*)|*.*"
             };
 
@@ -783,6 +845,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             }
 
             Raise(nameof(RecentEvents));
+            RaiseToday();
 
             if (!_settings.ShowNotifications)
             {

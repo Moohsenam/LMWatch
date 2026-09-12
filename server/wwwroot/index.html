@@ -23,6 +23,14 @@
 
   <div id="notice" class="banner warn hidden"></div>
 
+  <!-- ============================== prices ============================== -->
+  <section id="priceCard" class="card hidden">
+    <h2 class="section" data-t="priceTitle">قیمت‌ها</h2>
+    <p class="hint" data-t="priceIntro">قیمت‌ها با نرخ روز حساب می‌شوند و تا زمان تسویه ممکن است کمی جابه‌جا شوند.</p>
+    <div class="plans" id="planCards"></div>
+    <p class="note" id="priceUpdated"></p>
+  </section>
+
   <!-- ============================ order form ============================ -->
   <section id="formCard" class="card">
     <h2 class="section" data-t="formTitle">ثبت سفارش</h2>
@@ -61,6 +69,9 @@
           </select>
         </label>
       </div>
+
+      <!-- What this choice costs, before the form is sent rather than after. -->
+      <div class="quote hidden" id="quote"></div>
 
       <label class="field">
         <span data-t="email">ایمیل اکانتی که اشتراک رویش فعال شود</span>
@@ -133,6 +144,17 @@
       <button class="secondary" id="trackBtn" style="flex:0 0 auto" data-t="trackBtn">پیگیری</button>
     </div>
     <div id="trackResult" style="margin-top:14px"></div>
+  </section>
+
+  <!-- ============================= key check ============================ -->
+  <section class="card tight">
+    <h3 data-t="keyTitle">وضعیت کلید</h3>
+    <p class="hint" data-t="keyIntro">اگر کلید دارید، اینجا ببینید چند روز اعتبار برایش مانده.</p>
+    <div class="row" style="margin-top:10px">
+      <input type="text" id="keyCode" placeholder="SAFE-XXXX-XXXX-XXXX" dir="ltr" style="text-transform:uppercase">
+      <button class="secondary" id="keyBtn" style="flex:0 0 auto" data-t="keyBtn">بررسی</button>
+    </div>
+    <div id="keyResult" style="margin-top:14px"></div>
   </section>
 
   <footer class="foot">

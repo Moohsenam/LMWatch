@@ -462,12 +462,15 @@ public sealed partial class MainViewModel
 
     public RelayCommand RefreshIpCommand { get; private set; } = null!;
     public RelayCommand CopyIpCommand { get; private set; } = null!;
+    public RelayCommand ExportSettingsCommand { get; private set; } = null!;
+    public RelayCommand ImportSettingsCommand { get; private set; } = null!;
     public RelayCommand SetupEverythingCommand { get; private set; } = null!;
     public RelayCommand InstallFirewallCommand { get; private set; } = null!;
     public RelayCommand RemoveFirewallCommand { get; private set; } = null!;
     public RelayCommand LoadUsageCommand { get; private set; } = null!;
     public RelayCommand LoadPricesCommand { get; private set; } = null!;
     public RelayCommand SwitchServiceCommand { get; private set; } = null!;
+    public RelayCommand NextServiceCommand { get; private set; } = null!;
     public RelayCommand ActivateCommand { get; private set; } = null!;
     public RelayCommand FindAppsCommand { get; private set; } = null!;
     public RelayCommand BuyPlanCommand { get; private set; } = null!;
@@ -479,6 +482,73 @@ public sealed partial class MainViewModel
     private void BuildFeatureCommands()
     {
         RefreshIpCommand = new RelayCommand(() => Guard.RefreshAddressNow());
+
+        // Settings in and out of a file. What it is for: setting a second
+        // machine up the same way, and keeping a copy before a reinstall.
+        ExportSettingsCommand = new RelayCommand(() =>
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = $"safechat-settings-{DateTime.Now:yyyy-MM-dd}.json",
+                Filter = "SafeChat settings (*.json)|*.json|All files (*.*)|*.*"
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            try
+            {
+                File.WriteAllText(dialog.FileName, SettingsStore.Export(_settings));
+                _log.Add(ActivityKind.Good, "Settings exported", dialog.FileName);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, L["Confirm_Title"], MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        });
+
+        ImportSettingsCommand = new RelayCommand(() =>
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "SafeChat settings (*.json)|*.json|All files (*.*)|*.*"
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            GuardSettings imported;
+
+            try
+            {
+                imported = SettingsStore.Import(File.ReadAllText(dialog.FileName), _settings);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, L["Confirm_Title"], MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                L["Set_ImportConfirm"], L["Confirm_Title"],
+                MessageBoxButton.OKCancel, MessageBoxImage.Question);
+
+            if (confirm != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            Edit = imported;
+            SaveSettings();
+            RaiseAllSettings();
+            RefreshServiceTabs();
+            ThemeChanged?.Invoke(this, EventArgs.Empty);
+            _log.Add(ActivityKind.Good, "Settings imported", dialog.FileName);
+        });
 
         CopyIpCommand = new RelayCommand(() =>
         {
@@ -557,6 +627,7 @@ public sealed partial class MainViewModel
         LoadPricesCommand = new RelayCommand(() => _ = LoadPricesAsync());
 
         SwitchServiceCommand = new RelayCommand(p => SwitchService(p as string));
+        NextServiceCommand = new RelayCommand(NextService);
 
         ActivateCommand = new RelayCommand(() => _ = ActivateAsync());
 

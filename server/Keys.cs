@@ -132,6 +132,12 @@ public sealed class KeyMakeRequest
     public string? OrderCode { get; set; }
 }
 
+/// <summary>Issuing a key from an order. Days is optional: the order's own length is the default.</summary>
+public sealed class OrderKeyRequest
+{
+    public int Days { get; set; }
+}
+
 public sealed class KeyEditRequest
 {
     public string? Customer { get; set; }

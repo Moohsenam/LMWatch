@@ -553,6 +553,19 @@
 
                         <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
 
+                        <TextBlock Text="{Binding L[Set_Transfer]}" Style="{StaticResource Body}" />
+                        <TextBlock Text="{Binding L[Set_TransferHint]}" Style="{StaticResource Caption}"
+                                   Margin="0,4,0,10" TextWrapping="Wrap" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="{Binding L[Set_Export]}" Style="{StaticResource SecondaryButton}"
+                                    Command="{Binding ExportSettingsCommand}" Margin="0,0,10,0" />
+                            <Button Content="{Binding L[Set_Import]}" Style="{StaticResource SecondaryButton}"
+                                    Command="{Binding ImportSettingsCommand}" />
+                        </StackPanel>
+
+                        <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
+
                         <StackPanel Orientation="Horizontal">
                             <Button Content="{Binding L[Set_DataFolder]}" Style="{StaticResource SecondaryButton}"
                                     Command="{Binding OpenDataFolderCommand}" Margin="0,0,10,0" />

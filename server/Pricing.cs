@@ -226,7 +226,7 @@ public sealed class PricingService : IDisposable
     {
         _store = store;
 
-        Http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "ClaudeWatch/1.0");
+        Http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "SafeChat/1.0");
         Http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
 
         // First run shortly after boot, then on the configured interval. The
@@ -398,6 +398,7 @@ public sealed class PricingService : IDisposable
                 label = p.Label,
                 labelFa = p.LabelFa,
                 period = p.Period,
+                service = string.IsNullOrWhiteSpace(p.Service) ? "claude" : p.Service,
                 note = p.Note,
                 noteFa = p.NoteFa,
                 popular = p.Popular,

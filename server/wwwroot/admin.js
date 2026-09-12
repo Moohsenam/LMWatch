@@ -50,6 +50,42 @@ function money(amount, currency) {
   return `${amount} ${esc(currency || '')}`.trim();
 }
 
+function num(value) {
+  return Number(value || 0).toLocaleString('fa-IR');
+}
+
+/** A short date, day and month only — enough to place a bar on a 30-day axis. */
+function shortDay(iso) {
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('fa-IR', {
+    month: 'short', day: 'numeric', timeZone: 'UTC'
+  });
+}
+
+/**
+ * The same date for the chart, where the drawing is laid out left to right.
+ * The mark in front says "read this bit right to left", so the day stays in
+ * front of the month instead of being reordered by the surrounding direction.
+ */
+function chartDay(iso) {
+  return '‏' + shortDay(iso);
+}
+
+/**
+ * Messages that arrive, are read, and leave. The old in-page banners stayed on
+ * screen long after they meant anything, which trained the eye to skip them.
+ */
+function toast(message, kind = 'ok', seconds = 4) {
+  const element = document.createElement('div');
+  element.className = 'toast ' + kind;
+  element.textContent = message;
+  $('toasts').appendChild(element);
+
+  setTimeout(() => {
+    element.classList.add('out');
+    setTimeout(() => element.remove(), 240);
+  }, seconds * 1000);
+}
+
 // -------------------------------------------------------------------- login
 
 function showLogin() {
@@ -60,8 +96,8 @@ function showLogin() {
 function showPanel() {
   $('loginView').classList.add('hidden');
   $('panelView').classList.remove('hidden');
-  loadOrders();
   loadConfig();
+  showTab((location.hash || '#home').slice(1));
 }
 
 async function signIn() {
@@ -101,6 +137,255 @@ $('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') signIn
 $('logout').addEventListener('click', async () => {
   await fetch('/api/admin/logout', { method: 'POST', headers: { 'X-CW': '1' } });
   showLogin();
+});
+
+// -------------------------------------------------------------------- home
+
+let stats = null;
+let rangeDays = 30;
+
+async function loadHome() {
+  try {
+    const response = await api('/api/admin/stats?days=' + rangeDays);
+    stats = await response.json();
+  } catch (e) {
+    return;
+  }
+
+  renderHomeTiles();
+  renderChart();
+  renderChartTable();
+  renderWaiting();
+  renderRenewals();
+  renderMoney();
+}
+
+function renderHomeTiles() {
+  const t = stats.totals || {};
+  const k = stats.keys || {};
+
+  const tiles = [
+    { k: 'سفارش باز', v: num(t.open), sub: 'منتظر کار شما', go: 'orders' },
+    { k: 'در ' + num(stats.days) + ' روز', v: num(t.inWindow), sub: 'سفارش تازه' },
+    { k: 'تسویه شده', v: num(t.settled), sub: 'از ' + num(t.orders) + ' سفارش' },
+    { k: 'کلید فعال', v: num(k.active), sub: num(k.unused) + ' کلید آماده', go: 'keys' },
+    { k: 'رو به پایان', v: num(k.endingSoon), sub: 'تا یک هفته', go: 'keys' }
+  ];
+
+  $('homeTiles').innerHTML = tiles.map((tile) => `
+    <div class="tile ${tile.go ? 'link' : ''}" ${tile.go ? `data-go="${tile.go}"` : ''}>
+      <div class="k">${tile.k}</div>
+      <div class="v">${tile.v}</div>
+      <div class="sub">${tile.sub}</div>
+    </div>`).join('');
+
+  $('homeTiles').querySelectorAll('[data-go]').forEach((tile) =>
+    tile.addEventListener('click', () => showTab(tile.dataset.go)));
+}
+
+/**
+ * Orders per day, drawn by hand in SVG. One series and one axis: the settled
+ * count rides along in the tooltip rather than becoming a second colour, which
+ * would need a palette anyone could tell apart and earn nothing for it.
+ */
+function renderChart() {
+  const series = (stats && stats.series) || [];
+  const box = $('chart');
+
+  if (series.length === 0) {
+    box.innerHTML = '<p class="hint">هنوز سفارشی نیست.</p>';
+    return;
+  }
+
+  const width = Math.max(320, Math.round(box.clientWidth || 640));
+  const height = 190;
+  const padStart = 34;
+  const padEnd = 8;
+  const padTop = 14;
+  const padBottom = 24;
+
+  const plotW = width - padStart - padEnd;
+  const plotH = height - padTop - padBottom;
+  const base = padTop + plotH;
+
+  const peak = Math.max(...series.map((d) => d.orders), 0);
+  const step = [1, 2, 5, 10, 20, 50, 100, 200, 500].find((s) => peak <= s * 4) || 1000;
+  const top = Math.max(step, Math.ceil(peak / step) * step);
+
+  const slot = plotW / series.length;
+  const barW = Math.max(2, Math.min(slot - 2, 26));
+
+  const gridLines = [0, 0.5, 1].map((fraction) => {
+    const y = base - fraction * plotH;
+    const value = Math.round(top * fraction);
+    return `<line class="${fraction === 0 ? 'base' : 'grid'}" x1="${padStart}" y1="${y}" x2="${width - padEnd}" y2="${y}"></line>
+            <text class="tick" x="${padStart - 6}" y="${y + 3.5}" text-anchor="end">${num(value)}</text>`;
+  }).join('');
+
+  // As many date labels as the width can hold without them touching: about
+  // five on a wide card, two on a phone.
+  const maxLabels = Math.max(2, Math.min(6, Math.floor(plotW / 82)));
+  const every = Math.max(1, Math.ceil(series.length / maxLabels));
+
+  const columns = series.map((point, index) => {
+    const slotX = padStart + index * slot;
+    const x = slotX + (slot - barW) / 2;
+    const h = top === 0 ? 0 : (point.orders / top) * plotH;
+    const y = base - h;
+    const r = Math.min(4, barW / 2, h);
+
+    const bar = h <= 0
+      ? ''
+      : `<path class="bar" d="M${x.toFixed(1)},${base} V${(y + r).toFixed(1)}
+           Q${x.toFixed(1)},${y.toFixed(1)} ${(x + r).toFixed(1)},${y.toFixed(1)}
+           H${(x + barW - r).toFixed(1)}
+           Q${(x + barW).toFixed(1)},${y.toFixed(1)} ${(x + barW).toFixed(1)},${(y + r).toFixed(1)}
+           V${base} Z"></path>`;
+
+    // The two end labels are anchored inwards, or a narrow card clips them.
+    const last = index === series.length - 1;
+    const anchor = last ? 'end' : index === 0 ? 'start' : 'middle';
+    const labelX = last ? width - padEnd : index === 0 ? padStart : slotX + slot / 2;
+
+    const label = index % every === 0 || last
+      ? `<text class="tick" x="${labelX.toFixed(1)}" y="${height - 8}" text-anchor="${anchor}">${chartDay(point.day)}</text>`
+      : '';
+
+    return `<g class="col" data-i="${index}" data-x="${(slotX + slot / 2).toFixed(1)}" data-y="${y.toFixed(1)}">
+              <rect class="hit" x="${slotX.toFixed(1)}" y="${padTop}" width="${slot.toFixed(2)}" height="${plotH}"></rect>
+              ${bar}
+            </g>${label}`;
+  }).join('');
+
+  box.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"
+                        role="img" aria-label="نمودار سفارش‌های هر روز">
+                     ${gridLines}${columns}
+                   </svg>`;
+
+  const total = series.reduce((sum, d) => sum + d.orders, 0);
+  const busiest = series.reduce((best, d) => (d.orders > best.orders ? d : best), series[0]);
+  $('chartSub').textContent = total === 0
+    ? 'در این بازه سفارشی ثبت نشده.'
+    : `${num(total)} سفارش در ${num(series.length)} روز — پرکارترین روز ${shortDay(busiest.day)} با ${num(busiest.orders)}`;
+
+  bindChartHover(box);
+}
+
+function bindChartHover(box) {
+  const tip = $('chartTip');
+  const width = box.clientWidth || 1;
+  const scale = width / (box.querySelector('svg')?.viewBox.baseVal.width || 1);
+
+  box.querySelectorAll('.col').forEach((column) => {
+    column.addEventListener('mouseenter', () => {
+      const point = stats.series[Number(column.dataset.i)];
+      tip.innerHTML = `<div class="big">${num(point.orders)} سفارش</div>
+                       <div class="sub">${shortDay(point.day)} · ${num(point.paid)} تسویه شده</div>`;
+      tip.classList.remove('hidden');
+
+      // Measured after the text is in, so a long line near an edge is pulled
+      // back inside the card instead of being clipped by it.
+      const half = tip.offsetWidth / 2;
+      const x = Math.min(width - half - 4, Math.max(half + 4, Number(column.dataset.x) * scale));
+
+      tip.style.left = x + 'px';
+      tip.style.top = Math.max(tip.offsetHeight + 4, Number(column.dataset.y) * scale - 8) + 'px';
+    });
+
+    column.addEventListener('mouseleave', () => tip.classList.add('hidden'));
+  });
+}
+
+function renderChartTable() {
+  const series = (stats && stats.series) || [];
+
+  $('chartTable').innerHTML = `
+    <thead><tr><th>روز</th><th>سفارش</th><th>تسویه شده</th></tr></thead>
+    <tbody>${series.slice().reverse().map((point) => `
+      <tr><td>${shortDay(point.day)}</td><td>${num(point.orders)}</td><td>${num(point.paid)}</td></tr>`).join('')}
+    </tbody>`;
+}
+
+function renderWaiting() {
+  const items = (stats && stats.waiting) || [];
+  const box = $('homeWaiting');
+
+  if (items.length === 0) {
+    box.innerHTML = '<div class="none">چیزی معلق نیست. تمام.</div>';
+    return;
+  }
+
+  box.innerHTML = items.map((order) => `
+    <div class="minirow click" data-open="${esc(order.id)}">
+      <span class="code">${esc(order.code)}</span>
+      <span class="pill s-${esc(order.status)}"><span class="dot"></span>${STATUS[order.status] || order.status}</span>
+      <span class="who">${esc(order.fullName) || esc(order.planLabel)}</span>
+      <span class="far">${when(order.createdAt)}</span>
+    </div>`).join('');
+
+  box.querySelectorAll('[data-open]').forEach((row) =>
+    row.addEventListener('click', () => jumpToOrder(row.dataset.open)));
+}
+
+/** The dashboard only holds a summary, so the order itself is fetched on the way. */
+async function jumpToOrder(id) {
+  showTab('orders');
+
+  if (!orders.some((o) => o.id === id)) {
+    try {
+      const response = await api('/api/admin/orders/' + encodeURIComponent(id));
+      if (response.ok) orders.push(await response.json());
+    } catch (e) {
+      return;
+    }
+  }
+
+  openDrawer(id);
+}
+
+function renderRenewals() {
+  const items = (stats && stats.renewals) || [];
+  const box = $('homeRenewals');
+
+  if (items.length === 0) {
+    box.innerHTML = '<div class="none">هیچ کلیدی نزدیک پایان نیست.</div>';
+    return;
+  }
+
+  box.innerHTML = items.map((key) => `
+    <div class="minirow">
+      <span class="code">${esc(key.code)}</span>
+      <span class="who">${esc(key.customer) || '—'}</span>
+      <span class="far">${num(key.daysLeft)} روز مانده</span>
+    </div>`).join('');
+}
+
+function renderMoney() {
+  const t = (stats && stats.totals) || {};
+
+  $('homeMoney').innerHTML = [
+    { k: 'پرداختی من (دلار)', v: Number(t.cost || 0).toLocaleString('fa-IR') },
+    { k: 'دریافتی از مشتری‌ها', v: Number(t.charged || 0).toLocaleString('fa-IR') },
+    { k: 'سفارش تسویه‌شده', v: num(t.settled) }
+  ].map((cell) => `<div><div class="k">${cell.k}</div><div class="v">${cell.v}</div></div>`).join('');
+}
+
+$('rangeSeg').querySelectorAll('button').forEach((button) => {
+  button.addEventListener('click', () => {
+    $('rangeSeg').querySelectorAll('button').forEach((b) => b.classList.remove('on'));
+    button.classList.add('on');
+    rangeDays = Number(button.dataset.days);
+    loadHome();
+  });
+});
+
+// The chart is drawn at a measured width, so it has to be drawn again when that
+// width changes. Debounced: a drag across the screen is one redraw, not fifty.
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  if (!stats || $('tab-home').classList.contains('hidden')) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { renderChart(); }, 150);
 });
 
 // ------------------------------------------------------------------- orders
@@ -209,6 +494,7 @@ function openDrawer(id) {
 
     <div class="divider"></div>
 
+    <div class="quick" id="dQuick">${quickButtons(order.status)}</div>
     <label class="field"><span>وضعیت</span><select id="dStatus">${statusOptions}</select></label>
 
     <div class="row">
@@ -239,6 +525,17 @@ function openDrawer(id) {
     </div>
 
     <div class="divider"></div>
+
+    <h3>کلید این سفارش</h3>
+    <p class="hint">${order.months} ماه یعنی ${order.months * 30} روز. اگر روز دیگری می‌خواهید، پیش از ساختن عوض کنید.</p>
+    <div class="minilist" id="dKeys"><div class="none">…</div></div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px">
+      <label class="field" style="margin:0;width:110px"><span>روز</span>
+        <input type="number" id="dKeyDays" dir="ltr" min="1" value="${order.months * 30}"></label>
+      <button class="secondary" id="dMakeKey">ساخت کلید برای این سفارش</button>
+    </div>
+
+    <div class="divider"></div>
     <h3>تاریخچه</h3>
     <div class="timeline">${timeline}</div>`;
 
@@ -246,6 +543,99 @@ function openDrawer(id) {
   $('closeDrawer').addEventListener('click', closeDrawer);
   $('dSave').addEventListener('click', () => saveOrder(order.id));
   $('dDelete').addEventListener('click', () => deleteOrder(order.id));
+  $('dMakeKey').addEventListener('click', () => makeKeyForOrder(order.id));
+
+  $('dQuick').querySelectorAll('[data-status]').forEach((button) =>
+    button.addEventListener('click', () => {
+      $('dStatus').value = button.dataset.status;
+      saveOrder(order.id);
+    }));
+
+  loadOrderKeys(order.id);
+}
+
+async function loadOrderKeys(id) {
+  let items = [];
+
+  try {
+    const response = await api('/api/admin/orders/' + encodeURIComponent(id) + '/keys');
+    items = (await response.json()).items || [];
+  } catch (e) {
+    return;
+  }
+
+  const box = $('dKeys');
+  if (!box) return;
+
+  if (items.length === 0) {
+    box.innerHTML = '<div class="none">برای این سفارش کلیدی ساخته نشده.</div>';
+    return;
+  }
+
+  box.innerHTML = items.map((key) => `
+    <div class="minirow">
+      <span class="code">${esc(key.code)}</span>
+      <span class="kpill ${key.state}">${KEY_STATE[key.state] || key.state}</span>
+      <span class="who">${key.state === 'Active' ? key.daysLeft + ' روز مانده' : key.days + ' روزه'}</span>
+      <button class="ghost small far" data-copy="${esc(key.code)}">کپی</button>
+    </div>`).join('');
+
+  box.querySelectorAll('[data-copy]').forEach((button) =>
+    button.addEventListener('click', () => copy(button.dataset.copy, button)));
+}
+
+async function makeKeyForOrder(id) {
+  const button = $('dMakeKey');
+  button.disabled = true;
+
+  try {
+    const response = await api('/api/admin/orders/' + encodeURIComponent(id) + '/key', {
+      method: 'POST',
+      body: JSON.stringify({ days: Number($('dKeyDays').value) || 0 })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (data.ok) {
+      // Straight to the clipboard: the next thing that happens to a new key is
+      // always that it gets sent to someone.
+      copy(data.code);
+      toast('کلید ' + data.code + ' ساخته و کپی شد.');
+      loadOrderKeys(id);
+    } else {
+      toast('کلید ساخته نشد.', 'bad');
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function copy(text, button) {
+  navigator.clipboard?.writeText(text);
+
+  if (button) {
+    const was = button.textContent;
+    button.textContent = 'کپی شد';
+    setTimeout(() => (button.textContent = was), 1200);
+  }
+}
+
+/**
+ * An order almost always moves one step along, so that step is one press and
+ * the dropdown is left for the exceptions. The step after the current one is
+ * the highlighted button; cancelling is always available and never highlighted.
+ */
+const FLOW = ['New', 'Confirmed', 'AwaitingPayment', 'Paid', 'Done'];
+
+function quickButtons(current) {
+  const at = FLOW.indexOf(current);
+  const next = at >= 0 && at < FLOW.length - 1 ? FLOW[at + 1] : null;
+
+  const choices = FLOW.filter((s) => s !== current && s !== 'New').concat('Cancelled');
+
+  return choices.map((status) =>
+    `<button class="${status === next ? 'primary' : 'secondary'} small" data-status="${status}">${STATUS[status]}</button>`
+  ).join('');
 }
 
 function closeDrawer() {
@@ -292,16 +682,13 @@ async function saveOrder(id) {
       body: JSON.stringify(payload)
     });
 
-    const box = $('dMsg');
-
     if (response.ok) {
-      box.className = 'banner ok';
-      box.textContent = 'ذخیره شد.';
-      box.classList.remove('hidden');
+      toast('سفارش ذخیره شد.');
       await loadOrders();
       const updated = orders.find((o) => o.id === id);
       if (updated) openDrawer(id);
     } else {
+      const box = $('dMsg');
       box.className = 'banner bad';
       box.textContent = 'ذخیره نشد.';
       box.classList.remove('hidden');
@@ -323,19 +710,27 @@ async function deleteOrder(id) {
 
 // ----------------------------------------------------------------- settings
 
-document.querySelectorAll('.tabs button').forEach((button) => {
-  button.addEventListener('click', () => {
-    document.querySelectorAll('.tabs button').forEach((b) => b.classList.remove('on'));
-    button.classList.add('on');
-    const tab = button.dataset.tab;
-    $('tab-orders').classList.toggle('hidden', tab !== 'orders');
-    $('tab-keys').classList.toggle('hidden', tab !== 'keys');
-    $('tab-pricing').classList.toggle('hidden', tab !== 'pricing');
-    $('tab-settings').classList.toggle('hidden', tab !== 'settings');
+const TABS = ['home', 'orders', 'keys', 'pricing', 'settings'];
 
-    if (tab === 'pricing') loadPricing();
-    if (tab === 'keys') loadKeys();
-  });
+function showTab(tab) {
+  if (!TABS.includes(tab)) tab = 'home';
+
+  document.querySelectorAll('.tabs button').forEach((b) =>
+    b.classList.toggle('on', b.dataset.tab === tab));
+
+  TABS.forEach((name) => $('tab-' + name).classList.toggle('hidden', name !== tab));
+
+  // So a reload, or a bookmark, comes back to the same tab.
+  if (location.hash !== '#' + tab) history.replaceState(null, '', '#' + tab);
+
+  if (tab === 'home') loadHome();
+  if (tab === 'orders') loadOrders();
+  if (tab === 'pricing') loadPricing();
+  if (tab === 'keys') loadKeys();
+}
+
+document.querySelectorAll('.tabs button').forEach((button) => {
+  button.addEventListener('click', () => showTab(button.dataset.tab));
 });
 
 async function loadConfig() {
@@ -364,6 +759,10 @@ function renderPlanRows() {
       <input type="text" class="k" value="${esc(plan.key)}" placeholder="key" dir="ltr">
       <input type="text" value="${esc(plan.label)}" placeholder="Claude Pro" dir="ltr">
       <input type="text" value="${esc(plan.labelFa || '')}" placeholder="کلاد پرو">
+      <select class="svc" title="سرویس">
+        <option value="claude" ${plan.service !== 'chatgpt' ? 'selected' : ''}>کلاد</option>
+        <option value="chatgpt" ${plan.service === 'chatgpt' ? 'selected' : ''}>چت‌جی‌پی‌تی</option>
+      </select>
       <input type="number" class="u" value="${plan.usdPrice || 0}" placeholder="20" dir="ltr" title="قیمت دلاری">
       <select class="per" title="دوره">
         ${PERIODS.map((p) => `<option value="${p}" ${plan.period === p ? 'selected' : ''}>${
@@ -385,7 +784,7 @@ function renderPlanRows() {
 
 $('addPlan').addEventListener('click', () => {
   config.plans = config.plans || [];
-  config.plans.push({ key: '', label: '', labelFa: '', usdPrice: 0, period: 'month', enabled: true });
+  config.plans.push({ key: '', label: '', labelFa: '', usdPrice: 0, period: 'month', service: 'claude', enabled: true });
   renderPlanRows();
 });
 
@@ -399,6 +798,7 @@ function collectPlans() {
       labelFa: inputs[2].value.trim(),
       usdPrice: Number(row.querySelector('.u').value) || 0,
       period: row.querySelector('.per').value,
+      service: row.querySelector('.svc').value,
       popular: row.querySelector('.pop').checked,
       enabled: row.querySelector('.en').checked,
       priceHint: existing.priceHint || '',
@@ -420,10 +820,7 @@ $('saveSettings').addEventListener('click', async () => {
   };
 
   const response = await api('/api/admin/config', { method: 'PUT', body: JSON.stringify(payload) });
-  const box = $('settingsMsg');
-  box.className = response.ok ? 'banner ok' : 'banner bad';
-  box.textContent = response.ok ? 'ذخیره شد.' : 'ذخیره نشد.';
-  box.classList.remove('hidden');
+  toast(response.ok ? 'تنظیمات ذخیره شد.' : 'ذخیره نشد.', response.ok ? 'ok' : 'bad');
 
   if (response.ok) loadConfig();
 });
@@ -478,8 +875,8 @@ async function loadKeys() {
     return `
       <div class="key-row" data-code="${esc(key.code)}">
         <span class="code">${esc(key.code)}</span>
-        <span class="kpill ${key.state}">${KEY_STATE[key.state] || key.state}</span>
-        <span class="kpill Unused">${KEY_SERVICE[key.service] || key.service}</span>
+        <span class="kpill ${key.state}" title="${key.expiresAt ? esc(when(key.expiresAt)) : ''}">${KEY_STATE[key.state] || key.state}</span>
+        <span class="kpill svc-${esc(key.service)}">${KEY_SERVICE[key.service] || key.service}</span>
         <span class="who">${bits.join(' · ') || '—'}</span>
         <span class="acts">
           <button class="ghost small" data-copy="${esc(key.code)}">کپی</button>
@@ -505,11 +902,7 @@ function bindKeyActions() {
   };
 
   $('keyList').querySelectorAll('[data-copy]').forEach((b) =>
-    b.addEventListener('click', () => {
-      navigator.clipboard?.writeText(b.dataset.copy);
-      b.textContent = 'کپی شد';
-      setTimeout(() => (b.textContent = 'کپی'), 1200);
-    }));
+    b.addEventListener('click', () => copy(b.dataset.copy, b)));
 
   $('keyList').querySelectorAll('[data-release]').forEach((b) =>
     b.addEventListener('click', () => patch(b.dataset.release, { releaseDevice: true })));
@@ -634,18 +1027,25 @@ function renderRateState() {
 }
 
 function renderPricePreview() {
-  const rows = (pricing.preview || []).filter((row) => row.usdPrice > 0);
+  const rows = (pricing.preview || []).filter((row) => row.usdPrice > 0 && row.enabled !== false);
 
   if (!rows.length || !pricing.rateReady) {
     $('pricePreview').innerHTML = '<p class="hint">اول نرخ را درست کنید تا پیش‌نمایش بیاید.</p>';
     return;
   }
 
-  $('pricePreview').innerHTML = rows.map((row) => `
-    <div class="kv"><span class="k">${esc(row.label)}</span>
-      <span dir="ltr">$${row.usdPrice}</span>
-      <strong style="margin-inline-start:auto">${toman(row.toman)}</strong>
-    </div>`).join('');
+  const group = (service, title) => {
+    const mine = rows.filter((row) => (row.service || 'claude') === service);
+    if (!mine.length) return '';
+
+    return `<h3 style="margin-top:14px">${title}</h3>` + mine.map((row) => `
+      <div class="kv"><span class="k">${esc(row.label)}</span>
+        <span dir="ltr">$${row.usdPrice}</span>
+        <strong style="margin-inline-start:auto">${toman(row.toman)}</strong>
+      </div>`).join('');
+  };
+
+  $('pricePreview').innerHTML = group('claude', 'کلاد') + group('chatgpt', 'چت‌جی‌پی‌تی');
 }
 
 function toggleRateBoxes() {
@@ -709,10 +1109,7 @@ $('savePricing').addEventListener('click', async () => {
   };
 
   const response = await api('/api/admin/config', { method: 'PUT', body: JSON.stringify(payload) });
-  const box = $('pricingMsg');
-  box.className = response.ok ? 'banner ok' : 'banner bad';
-  box.textContent = response.ok ? 'ذخیره شد.' : 'ذخیره نشد.';
-  box.classList.remove('hidden');
+  toast(response.ok ? 'قیمت‌ها ذخیره شد.' : 'ذخیره نشد.', response.ok ? 'ok' : 'bad');
 
   if (response.ok) loadPricing();
 });
@@ -739,6 +1136,46 @@ $('changePw').addEventListener('click', async () => {
   box.className = 'banner bad';
   box.textContent = data.error === 'too_short' ? 'رمز جدید کوتاه است.' : 'رمز فعلی درست نیست.';
   box.classList.remove('hidden');
+});
+
+// --------------------------------------------------------------- shortcuts
+
+/**
+ * Only when the panel is up and the caret is not in a field, so typing a "/"
+ * into a note never steals focus or reloads a list underneath you.
+ */
+function typing(target) {
+  return target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+}
+
+document.addEventListener('keydown', (event) => {
+  if ($('panelView').classList.contains('hidden')) return;
+
+  // Alt+number jumps between tabs and is safe to press mid-sentence.
+  if (event.altKey && !event.ctrlKey && event.key >= '1' && event.key <= '5') {
+    event.preventDefault();
+    showTab(TABS[Number(event.key) - 1]);
+    return;
+  }
+
+  if (typing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+
+  const tab = TABS.find((name) => !$('tab-' + name).classList.contains('hidden'));
+
+  if (event.key === '/') {
+    const field = tab === 'keys' ? $('keySearch') : tab === 'orders' ? $('search') : null;
+    if (field) {
+      event.preventDefault();
+      field.focus();
+      field.select();
+    }
+    return;
+  }
+
+  if (event.key === 'r') {
+    event.preventDefault();
+    showTab(tab);
+  }
 });
 
 // ------------------------------------------------------------------- start

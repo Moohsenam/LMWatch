@@ -128,7 +128,7 @@ public sealed class GuardService : IDisposable
     public void Pause(TimeSpan duration)
     {
         _state.PausedUntil = DateTimeOffset.Now + duration;
-        _log.Add(ActivityKind.Warning, "Protection paused", $"For {Describe(duration)}.");
+        _log.Add(ActivityKind.Warning, "Protection paused", $"For {Describe(duration)}.", ActivityCode.Paused);
         Poll();
     }
 
@@ -188,7 +188,7 @@ public sealed class GuardService : IDisposable
 
         if (result.Stopped > 0)
         {
-            _log.Add(ActivityKind.Alert, $"Stopped {result.Stopped} Claude process(es)", reason);
+            _log.Add(ActivityKind.Alert, $"Stopped {result.Stopped} Claude process(es)", reason, ActivityCode.Stopped);
         }
         else if (result.Requested > 0)
         {
@@ -209,7 +209,7 @@ public sealed class GuardService : IDisposable
         {
             case TimeZoneChangeOutcome.Changed:
                 _state.TimeZoneChangeFailed = false;
-                _log.Add(ActivityKind.Good, "Time zone changed", Friendly(timeZoneId));
+                _log.Add(ActivityKind.Good, "Time zone changed", Friendly(timeZoneId), ActivityCode.TimeZone);
                 break;
             case TimeZoneChangeOutcome.AlreadyCorrect:
                 _state.TimeZoneChangeFailed = false;
@@ -282,7 +282,7 @@ public sealed class GuardService : IDisposable
 
                 if (result.Stopped > 0)
                 {
-                    var entry = _log.Add(ActivityKind.Alert, $"Claude stopped automatically", reason);
+                    var entry = _log.Add(ActivityKind.Alert, "Claude stopped automatically", reason, ActivityCode.Stopped);
                     Notified?.Invoke(this, entry);
                     processes = _processes.Scan(_settings);
                     input = new GuardInput
@@ -303,7 +303,7 @@ public sealed class GuardService : IDisposable
                      && _lastPhase != decision.Phase)
             {
                 var entry = _log.Add(ActivityKind.Warning, "Claude is running while unprotected",
-                    "Warn-only mode is on, so nothing was stopped.");
+                    "Warn-only mode is on, so nothing was stopped.", ActivityCode.Unprotected);
                 Notified?.Invoke(this, entry);
             }
 
@@ -390,7 +390,7 @@ public sealed class GuardService : IDisposable
         if (result.Outcome == TimeZoneChangeOutcome.Changed)
         {
             _state.TimeZoneChangeFailed = false;
-            var entry = _log.Add(ActivityKind.Good, "Time zone changed", Friendly(timeZoneId));
+            var entry = _log.Add(ActivityKind.Good, "Time zone changed", Friendly(timeZoneId), ActivityCode.TimeZone);
             Notified?.Invoke(this, entry);
         }
         else if (result.Outcome is TimeZoneChangeOutcome.Declined or TimeZoneChangeOutcome.Failed)
@@ -420,7 +420,7 @@ public sealed class GuardService : IDisposable
                     : "The VPN dropped.";
 
                 var entry = _log.Add(ActivityKind.Alert, "Traffic cut, Claude closing shortly",
-                    $"{reason} Reconnect within {_settings.GraceSeconds}s to keep it open.");
+                    $"{reason} Reconnect within {_settings.GraceSeconds}s to keep it open.", ActivityCode.Blocked);
                 Notified?.Invoke(this, entry);
             }
 
@@ -505,8 +505,8 @@ public sealed class GuardService : IDisposable
             _firewallState[profile.Key] = shouldBlock;
 
             var entry = shouldBlock
-                ? _log.Add(ActivityKind.Alert, $"{profile.Name}'s traffic is blocked", "The firewall rule is on.")
-                : _log.Add(ActivityKind.Good, $"{profile.Name}'s traffic is allowed again", "The firewall rule is off.");
+                ? _log.Add(ActivityKind.Alert, $"{profile.Name}'s traffic is blocked", "The firewall rule is on.", ActivityCode.Blocked)
+                : _log.Add(ActivityKind.Good, $"{profile.Name}'s traffic is allowed again", "The firewall rule is off.", ActivityCode.Unblocked);
 
             Notified?.Invoke(this, entry);
         }
@@ -582,8 +582,8 @@ public sealed class GuardService : IDisposable
         if (snapshot.VpnConnected != _lastVpn)
         {
             var entry = snapshot.VpnConnected
-                ? _log.Add(ActivityKind.Good, "VPN connected", snapshot.VpnDetail)
-                : _log.Add(ActivityKind.Alert, "VPN disconnected", "Claude is blocked.");
+                ? _log.Add(ActivityKind.Good, "VPN connected", snapshot.VpnDetail, ActivityCode.VpnUp)
+                : _log.Add(ActivityKind.Alert, "VPN disconnected", "Claude is blocked.", ActivityCode.VpnDown);
             Notified?.Invoke(this, entry);
             _lastVpn = snapshot.VpnConnected;
         }
