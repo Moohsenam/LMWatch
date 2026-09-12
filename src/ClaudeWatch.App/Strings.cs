@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace ClaudeWatch.App;
@@ -19,25 +20,82 @@ public sealed class Strings
 
     public bool IsRightToLeft => _language == "fa";
 
+    /// <summary>
+    /// The service the window is showing. Every string containing {app} is
+    /// rewritten with it, so "Stop Claude" reads "Stop ChatGPT" the moment the
+    /// toggle moves, with one table rather than two.
+    /// </summary>
+    public string ServiceName { get; set; } = "Claude";
+
     public string this[string key]
     {
         get
         {
             var table = _language == "fa" ? Fa : En;
+
             if (table.TryGetValue(key, out var value))
             {
-                return value;
+                return Fill(value);
             }
 
-            return En.TryGetValue(key, out var fallback) ? fallback : key;
+            return En.TryGetValue(key, out var fallback) ? Fill(fallback) : key;
         }
     }
 
     public string Get(string key) => this[key];
 
+    private string Fill(string text)
+        => text.Contains("{app}", StringComparison.Ordinal)
+            ? text.Replace("{app}", ServiceName, StringComparison.Ordinal)
+            : text;
+
     private static readonly Dictionary<string, string> En = new()
     {
-        ["App_Name"] = "Claude Watch",
+        ["App_Name"] = "SafeChat",
+        ["Head_Locked"] = "Not activated",
+        ["Msg_Locked"] = "The trial has ended. Enter a key and protection starts again.",
+
+        ["Nav_Licence"] = "Activation",
+        ["Lic_Title"] = "Activation",
+        ["Lic_Hint"] = "One key, one computer. Buying and ordering work without it; protection does not.",
+        ["Lic_Key"] = "Your key",
+        ["Lic_Activate"] = "Activate",
+        ["Lic_Checking"] = "Checking…",
+        ["Lic_Trial"] = "Trial",
+        ["Lic_TrialLeft"] = "days of trial left",
+        ["Lic_Active"] = "Active",
+        ["Lic_DaysLeft"] = "days left",
+        ["Lic_Until"] = "Runs until",
+        ["Lic_NeedsKey"] = "The trial has ended. Protection is off until a key is activated.",
+        ["Lic_Expired"] = "This key has run out. Renew it and activate again.",
+        ["Lic_WrongDevice"] = "This key is already in use on another computer.",
+        ["Lic_Revoked"] = "This key was switched off.",
+        ["Lic_Offline"] = "The server could not be reached. Protection keeps running until the key's own end date.",
+        ["Lic_Unknown"] = "This key was not recognised. Check it and try again.",
+        ["Lic_NoServer"] = "No server address is set. Add it in Settings first.",
+        ["Lic_Buy"] = "I do not have a key",
+
+        ["Svc_Claude"] = "Claude",
+        ["Svc_ChatGpt"] = "ChatGPT",
+        ["Svc_Switch"] = "Switch service",
+        ["Svc_Enabled"] = "Watch this app",
+        ["Svc_Both"] = "Both apps are watched. The clock rule follows the one you have selected.",
+
+        ["Wiz_Welcome"] = "Welcome to SafeChat",
+        ["Wiz_Intro"] = "A few quick questions and you are done. Everything here can be changed later.",
+        ["Wiz_Lang"] = "Which language?",
+        ["Wiz_Apps"] = "Which apps do you use?",
+        ["Wiz_Apps_Sub"] = "Only the ones you tick are watched.",
+        ["Wiz_Zone"] = "Which time zone should your session look like?",
+        ["Wiz_Zone_Sub"] = "The clock is put back to your home zone the moment the tunnel drops.",
+        ["Wiz_Key"] = "Have a key?",
+        ["Wiz_Key_Sub"] = "Leave it empty to start the trial. You can activate any time.",
+        ["Wiz_Server"] = "Server address",
+        ["Wiz_Server_Sub"] = "Where orders and keys are checked. Your seller gives you this.",
+        ["Wiz_Next"] = "Next",
+        ["Wiz_Back"] = "Back",
+        ["Wiz_Finish"] = "Finish",
+        ["Wiz_Skip"] = "Skip for now",
         ["App_Tagline"] = "VPN and clock guard",
 
         ["Nav_Dashboard"] = "Dashboard",
@@ -54,16 +112,16 @@ public sealed class Strings
         ["Head_Paused"] = "Paused",
         ["Head_Off"] = "Guard off",
 
-        ["Msg_Ready"] = "VPN is up and the clock matches. Claude is free to run.",
-        ["Msg_Blocked"] = "No VPN detected. Claude is stopped and stays stopped.",
-        ["Msg_Standby"] = "Home time is back while Claude is closed. Prepare before you open it.",
+        ["Msg_Ready"] = "VPN is up and the clock matches. {app} is free to run.",
+        ["Msg_Blocked"] = "No VPN detected. {app} is stopped and stays stopped.",
+        ["Msg_Standby"] = "Home time is back while {app} is closed. Prepare before you open it.",
         ["Msg_Mismatch"] = "The system clock is not the zone this session needs.",
         ["Msg_Paused"] = "All rules are paused. Nothing will be stopped.",
         ["Msg_Off"] = "Both rules are switched off in Settings.",
 
         ["Tile_Vpn"] = "VPN",
         ["Tile_Clock"] = "System clock",
-        ["Tile_Claude"] = "Claude",
+        ["Tile_Claude"] = "{app}",
         ["Vpn_None"] = "Not connected",
         ["Clock_Target"] = "Needs",
         ["Clock_Home"] = "Home",
@@ -72,8 +130,8 @@ public sealed class Strings
         ["Claude_None"] = "Not running",
         ["Claude_Running"] = "running",
 
-        ["Btn_Open"] = "Open Claude",
-        ["Btn_Stop"] = "Stop Claude",
+        ["Btn_Open"] = "Open {app}",
+        ["Btn_Stop"] = "Stop {app}",
         ["Btn_Prepare"] = "Prepare work time",
         ["Btn_HoldHome"] = "Back to home time",
         ["Btn_Pause"] = "Pause guard",
@@ -100,7 +158,7 @@ public sealed class Strings
 
         ["Banner_ClockNeeded"] = "The clock needs to change",
         ["Banner_ClockDetail"] = "Windows asks for approval once, then the guard continues.",
-        ["Banner_Failed"] = "The last change did not go through. Claude stays blocked.",
+        ["Banner_Failed"] = "The last change did not go through. {app} stays blocked.",
         ["Banner_Paused"] = "Guard paused until",
 
         ["Pause_15"] = "15 minutes",
@@ -113,7 +171,7 @@ public sealed class Strings
         ["Proc_Memory"] = "Memory",
         ["Proc_Started"] = "Started",
         ["Proc_StopAll"] = "Stop all",
-        ["Proc_Hint"] = "Matching is on the program name only, so a script that merely mentions Claude is never touched.",
+        ["Proc_Hint"] = "Matching is on the program name only, so a script that merely mentions the app is never touched.",
 
         ["Net_Title"] = "Network adapters",
         ["Net_Hint"] = "Green means this adapter counts as your VPN right now. Trust one to force it, ignore one to rule it out.",
@@ -132,14 +190,14 @@ public sealed class Strings
 
         ["Set_Protection"] = "Protection",
         ["Set_EnforceVpn"] = "Require a VPN",
-        ["Set_EnforceVpn_Sub"] = "Stop Claude the moment the tunnel drops.",
+        ["Set_EnforceVpn_Sub"] = "Stop the app the moment the tunnel drops.",
         ["Set_EnforceTz"] = "Require the work time zone",
-        ["Set_EnforceTz_Sub"] = "Keep the system clock in the zone below while Claude runs.",
+        ["Set_EnforceTz_Sub"] = "Keep the system clock in the zone below while {app} runs.",
         ["Set_Action"] = "When a rule breaks",
-        ["Set_Action_Stop"] = "Stop Claude",
+        ["Set_Action_Stop"] = "Stop the app",
         ["Set_Action_Warn"] = "Only warn me",
         ["Set_Tolerance"] = "Ignore short VPN drops for",
-        ["Set_Tolerance_Sub"] = "Claude is blocked immediately either way; this only delays changing the clock.",
+        ["Set_Tolerance_Sub"] = "The app is blocked immediately either way; this only delays changing the clock.",
         ["Set_Checks"] = "checks",
         ["Set_Interval"] = "Check every",
         ["Set_Seconds"] = "seconds",
@@ -158,8 +216,8 @@ public sealed class Strings
 
         ["Set_Detection"] = "Detection",
         ["Set_VpnPattern"] = "VPN adapter pattern",
-        ["Set_ProcPattern"] = "Claude process pattern",
-        ["Set_Extra"] = "Also treat as Claude",
+        ["Set_ProcPattern"] = "{app} process pattern",
+        ["Set_Extra"] = "Also treat as {app}",
         ["Set_Excluded"] = "Never stop",
         ["Set_CommaHint"] = "Separate names with commas.",
         ["Set_Tunnels"] = "Count any tunnel or dial-up adapter as a VPN",
@@ -175,9 +233,9 @@ public sealed class Strings
         ["Set_Notify"] = "Show notifications",
         ["Set_NotifyProblems"] = "Only for problems",
         ["Set_Sound"] = "Play a sound with alerts",
-        ["Set_Confirm"] = "Ask before I stop Claude by hand",
-        ["Set_Hotkey"] = "Ctrl+Alt+K stops Claude from anywhere",
-        ["Set_ClaudePath"] = "Claude program",
+        ["Set_Confirm"] = "Ask before I stop the app by hand",
+        ["Set_Hotkey"] = "Ctrl+Alt+K stops the app from anywhere",
+        ["Set_ClaudePath"] = "{app} program",
         ["Set_ClaudePath_Auto"] = "Found automatically",
         ["Set_ClaudePath_Missing"] = "Not found — pick it by hand",
 
@@ -211,7 +269,7 @@ public sealed class Strings
         ["Tray_Running"] = "Claude Watch is still running in the tray.",
 
         ["Confirm_Stop"] = "Stop every running Claude process?",
-        ["Confirm_Title"] = "Claude Watch",
+        ["Confirm_Title"] = "SafeChat",
         ["Confirm_Reset"] = "Put every setting back to its default?",
 
         ["Notify_Stopped"] = "Claude was stopped",
@@ -340,7 +398,51 @@ public sealed class Strings
 
     private static readonly Dictionary<string, string> Fa = new()
     {
-        ["App_Name"] = "Claude Watch",
+        ["App_Name"] = "SafeChat",
+        ["Head_Locked"] = "فعال نشده",
+        ["Msg_Locked"] = "دوره آزمایشی تمام شد. کلید را وارد کنید تا محافظت دوباره شروع شود.",
+
+        ["Nav_Licence"] = "فعال‌سازی",
+        ["Lic_Title"] = "فعال‌سازی",
+        ["Lic_Hint"] = "هر کلید روی یک کامپیوتر. خرید و ثبت سفارش بدون کلید کار می‌کند، محافظت نه.",
+        ["Lic_Key"] = "کلید شما",
+        ["Lic_Activate"] = "فعال کن",
+        ["Lic_Checking"] = "در حال بررسی…",
+        ["Lic_Trial"] = "آزمایشی",
+        ["Lic_TrialLeft"] = "روز از دوره آزمایشی مانده",
+        ["Lic_Active"] = "فعال",
+        ["Lic_DaysLeft"] = "روز مانده",
+        ["Lic_Until"] = "تا تاریخ",
+        ["Lic_NeedsKey"] = "دوره آزمایشی تمام شد. تا فعال شدن کلید، محافظت خاموش است.",
+        ["Lic_Expired"] = "این کلید تمام شده. تمدیدش کنید و دوباره فعال کنید.",
+        ["Lic_WrongDevice"] = "این کلید روی کامپیوتر دیگری فعال است.",
+        ["Lic_Revoked"] = "این کلید غیرفعال شده.",
+        ["Lic_Offline"] = "سرور در دسترس نبود. محافظت تا تاریخ پایان خودِ کلید ادامه دارد.",
+        ["Lic_Unknown"] = "این کلید شناخته نشد. دوباره بررسی کنید.",
+        ["Lic_NoServer"] = "آدرس سرور وارد نشده. اول در تنظیمات واردش کنید.",
+        ["Lic_Buy"] = "کلید ندارم",
+
+        ["Svc_Claude"] = "کلاد",
+        ["Svc_ChatGpt"] = "چت‌جی‌پی‌تی",
+        ["Svc_Switch"] = "تعویض سرویس",
+        ["Svc_Enabled"] = "این اپ زیر نظر باشد",
+        ["Svc_Both"] = "هر دو اپ زیر نظرند. قانون ساعت از سرویسی که انتخاب کرده‌اید پیروی می‌کند.",
+
+        ["Wiz_Welcome"] = "به SafeChat خوش آمدید",
+        ["Wiz_Intro"] = "چند سوال کوتاه و تمام. همه‌اش را بعداً هم می‌توانید عوض کنید.",
+        ["Wiz_Lang"] = "زبان؟",
+        ["Wiz_Apps"] = "از کدام اپ‌ها استفاده می‌کنید؟",
+        ["Wiz_Apps_Sub"] = "فقط همان‌هایی که تیک بزنید زیر نظر گرفته می‌شوند.",
+        ["Wiz_Zone"] = "جلسه شما باید شبیه کدام منطقه زمانی باشد؟",
+        ["Wiz_Zone_Sub"] = "همان لحظه که تونل قطع شود ساعت به منطقه خانگی برمی‌گردد.",
+        ["Wiz_Key"] = "کلید دارید؟",
+        ["Wiz_Key_Sub"] = "خالی بگذارید تا دوره آزمایشی شروع شود. هر وقت خواستید فعال کنید.",
+        ["Wiz_Server"] = "آدرس سرور",
+        ["Wiz_Server_Sub"] = "جایی که سفارش و کلید بررسی می‌شود. فروشنده به شما می‌دهد.",
+        ["Wiz_Next"] = "بعدی",
+        ["Wiz_Back"] = "قبلی",
+        ["Wiz_Finish"] = "تمام",
+        ["Wiz_Skip"] = "فعلاً رد کن",
         ["App_Tagline"] = "نگهبان VPN و ساعت",
 
         ["Nav_Dashboard"] = "وضعیت",
@@ -514,7 +616,7 @@ public sealed class Strings
         ["Tray_Running"] = "Claude Watch در نوار وظیفه باز است.",
 
         ["Confirm_Stop"] = "همه پردازش‌های کلاد بسته شوند؟",
-        ["Confirm_Title"] = "Claude Watch",
+        ["Confirm_Title"] = "SafeChat",
         ["Confirm_Reset"] = "همه تنظیم‌ها به پیش‌فرض برگردند؟",
 
         ["Notify_Stopped"] = "کلاد بسته شد",

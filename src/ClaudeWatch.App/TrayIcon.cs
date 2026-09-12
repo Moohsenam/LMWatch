@@ -61,7 +61,7 @@ public sealed class TrayIcon : IDisposable
         _icon = new Forms.NotifyIcon
         {
             Visible = true,
-            Text = "Claude Watch",
+            Text = "SafeChat",
             ContextMenuStrip = menu,
             Icon = BuildIcon(GuardPhase.Off)
         };
@@ -120,7 +120,7 @@ public sealed class TrayIcon : IDisposable
 
             _icon.ShowBalloonTip(
                 5000,
-                string.IsNullOrWhiteSpace(request.Title) ? "Claude Watch" : request.Title,
+                string.IsNullOrWhiteSpace(request.Title) ? "SafeChat" : request.Title,
                 string.IsNullOrWhiteSpace(request.Message) ? " " : request.Message,
                 icon);
         }

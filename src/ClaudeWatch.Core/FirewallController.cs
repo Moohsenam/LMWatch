@@ -13,39 +13,49 @@ namespace ClaudeWatch.Core;
 /// </summary>
 public static class FirewallController
 {
-    public const string RuleName = "ClaudeWatch Block Claude";
-    public const string OnTaskName = "ClaudeWatch-FirewallOn";
-    public const string OffTaskName = "ClaudeWatch-FirewallOff";
+    /// <summary>
+    /// Every name is per service, because a firewall rule names one executable.
+    /// Claude and ChatGPT each get their own rule and their own pair of switches,
+    /// so blocking one never touches the other.
+    /// </summary>
+    public static string RuleNameFor(ServiceProfile profile) => $"SafeChat Block {profile.Name}";
+
+    public static string OnTaskFor(ServiceProfile profile) => $"SafeChat-FirewallOn-{profile.Key}";
+
+    public static string OffTaskFor(ServiceProfile profile) => $"SafeChat-FirewallOff-{profile.Key}";
 
     /// <summary>True once both tasks exist, meaning switching needs no approval.</summary>
-    public static bool IsReady()
-        => PrivilegedHelper.TaskExists(OnTaskName) && PrivilegedHelper.TaskExists(OffTaskName);
+    public static bool IsReady(ServiceProfile profile)
+        => PrivilegedHelper.TaskExists(OnTaskFor(profile)) && PrivilegedHelper.TaskExists(OffTaskFor(profile));
 
     /// <summary>
     /// Creates the (disabled) block rule and the two switches. Asks for
     /// administrator approval once.
     /// </summary>
-    public static (bool Ok, string Message) Install(string claudeExecutablePath)
+    public static (bool Ok, string Message) Install(ServiceProfile profile, string executablePath)
     {
-        if (string.IsNullOrWhiteSpace(claudeExecutablePath) || !File.Exists(claudeExecutablePath))
+        if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
         {
-            return (false, "Claude was not found. Set its location in Settings first.");
+            return (false, $"{profile.Name} was not found. Set its location in Settings first.");
         }
 
+        var ruleName = RuleNameFor(profile);
+        var onTask = OnTaskFor(profile);
+        var offTask = OffTaskFor(profile);
         var netsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netsh.exe");
 
         var script = new StringBuilder();
         script.AppendLine("@echo off");
 
         // Start from a clean slate so a changed Claude path cannot leave a stale rule.
-        script.AppendLine($"\"{netsh}\" advfirewall firewall delete rule name=\"{RuleName}\" >nul 2>&1");
+        script.AppendLine($"\"{netsh}\" advfirewall firewall delete rule name=\"{ruleName}\" >nul 2>&1");
         script.AppendLine(
-            $"\"{netsh}\" advfirewall firewall add rule name=\"{RuleName}\" " +
-            $"dir=out action=block enable=no program=\"{claudeExecutablePath}\" " +
-            "profile=any description=\"Blocked by Claude Watch while the VPN is down\"");
+            $"\"{netsh}\" advfirewall firewall add rule name=\"{ruleName}\" " +
+            $"dir=out action=block enable=no program=\"{executablePath}\" " +
+            $"profile=any description=\"Blocked by SafeChat while the VPN is down\"");
 
-        script.AppendLine(Task(OnTaskName, "yes"));
-        script.AppendLine(Task(OffTaskName, "no"));
+        script.AppendLine(Task(onTask, "yes"));
+        script.AppendLine(Task(offTask, "no"));
         script.AppendLine("exit /b 0");
 
         return PrivilegedHelper.RunElevatedScript(script.ToString(), "firewall setup");
@@ -54,18 +64,18 @@ public static class FirewallController
             => "schtasks /create /f /rl highest /sc ONEVENT /ec Application " +
                "/mo \"*[System/EventID=65530]\" " +
                $"/tn \"{taskName}\" " +
-               $"/tr \"\\\"{netsh}\\\" advfirewall firewall set rule name=\\\"{RuleName}\\\" new enable={enable}\"";
+               $"/tr \"\\\"{netsh}\\\" advfirewall firewall set rule name=\\\"{ruleName}\\\" new enable={enable}\"";
     }
 
-    public static (bool Ok, string Message) Uninstall()
+    public static (bool Ok, string Message) Uninstall(ServiceProfile profile)
     {
         var netsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netsh.exe");
 
         var script = new StringBuilder();
         script.AppendLine("@echo off");
-        script.AppendLine($"\"{netsh}\" advfirewall firewall delete rule name=\"{RuleName}\" >nul 2>&1");
-        script.AppendLine($"schtasks /delete /f /tn \"{OnTaskName}\" >nul 2>&1");
-        script.AppendLine($"schtasks /delete /f /tn \"{OffTaskName}\" >nul 2>&1");
+        script.AppendLine($"\"{netsh}\" advfirewall firewall delete rule name=\"{RuleNameFor(profile)}\" >nul 2>&1");
+        script.AppendLine($"schtasks /delete /f /tn \"{OnTaskFor(profile)}\" >nul 2>&1");
+        script.AppendLine($"schtasks /delete /f /tn \"{OffTaskFor(profile)}\" >nul 2>&1");
         script.AppendLine("exit /b 0");
 
         return PrivilegedHelper.RunElevatedScript(script.ToString(), "firewall removal");
@@ -77,9 +87,9 @@ public static class FirewallController
     /// means the switch quietly does nothing rather than throwing an approval
     /// dialog at someone every time their tunnel wobbles.
     /// </summary>
-    public static bool Set(bool blocked, bool allowPrompt = false)
+    public static bool Set(ServiceProfile profile, bool blocked, bool allowPrompt = false)
     {
-        var taskName = blocked ? OnTaskName : OffTaskName;
+        var taskName = blocked ? OnTaskFor(profile) : OffTaskFor(profile);
 
         if (PrivilegedHelper.TaskExists(taskName) && PrivilegedHelper.RunTask(taskName))
         {
@@ -91,10 +101,10 @@ public static class FirewallController
             return false;
         }
 
-        return RunNetshDirect(blocked);
+        return RunNetshDirect(RuleNameFor(profile), blocked);
     }
 
-    private static bool RunNetshDirect(bool blocked)
+    private static bool RunNetshDirect(string ruleName, bool blocked)
     {
         try
         {
@@ -104,7 +114,7 @@ public static class FirewallController
             var info = new ProcessStartInfo
             {
                 FileName = netsh,
-                Arguments = $"advfirewall firewall set rule name=\"{RuleName}\" new enable={(blocked ? "yes" : "no")}",
+                Arguments = $"advfirewall firewall set rule name=\"{ruleName}\" new enable={(blocked ? "yes" : "no")}",
                 UseShellExecute = !elevated,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden
@@ -135,7 +145,7 @@ public static class FirewallController
     /// system language, so an unreadable answer is reported as unknown rather
     /// than guessed at.
     /// </summary>
-    public static bool? IsBlocking()
+    public static bool? IsBlocking(ServiceProfile profile)
     {
         try
         {
@@ -144,7 +154,7 @@ public static class FirewallController
             var info = new ProcessStartInfo
             {
                 FileName = netsh,
-                Arguments = $"advfirewall firewall show rule name=\"{RuleName}\"",
+                Arguments = $"advfirewall firewall show rule name=\"{RuleNameFor(profile)}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,

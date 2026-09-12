@@ -36,8 +36,8 @@ public sealed class TimeZoneChangeResult
 /// </summary>
 public sealed class TimeZoneController
 {
-    public const string WorkTaskName = "ClaudeWatch-SetWorkTimeZone";
-    public const string HomeTaskName = "ClaudeWatch-SetHomeTimeZone";
+    public const string WorkTaskName = "SafeChat-SetWorkTimeZone";
+    public const string HomeTaskName = "SafeChat-SetHomeTimeZone";
 
     public string CurrentId
     {
@@ -138,7 +138,7 @@ public sealed class TimeZoneController
 
         if (settings.UsePrivilegedHelper)
         {
-            var taskName = string.Equals(timeZoneId, settings.HomeTimeZoneId, StringComparison.OrdinalIgnoreCase)
+            var taskName = string.Equals(timeZoneId, settings.Active.HomeTimeZoneId, StringComparison.OrdinalIgnoreCase)
                 ? HomeTaskName
                 : WorkTaskName;
 
@@ -295,14 +295,19 @@ public static class PrivilegedHelper
     /// that turn that rule on and off. Windows asks for approval once, here, and
     /// nothing afterwards ever needs to ask again.
     /// </summary>
-    public static (bool Ok, string Message) InstallEverything(GuardSettings settings, string claudeExecutablePath)
+    public static (bool Ok, string Message) InstallEverything(GuardSettings settings)
     {
         var system = Environment.GetFolderPath(Environment.SpecialFolder.System);
         var tzutil = Path.Combine(system, "tzutil.exe");
         var netsh = Path.Combine(system, "netsh.exe");
-        var withFirewall = !string.IsNullOrWhiteSpace(claudeExecutablePath) && File.Exists(claudeExecutablePath);
 
-        var script = BuildSetupScript(settings, claudeExecutablePath, tzutil, netsh, withFirewall);
+        var located = settings.Watched
+            .Where(p => !string.IsNullOrWhiteSpace(p.ExecutablePath) && File.Exists(p.ExecutablePath))
+            .ToList();
+
+        var withFirewall = located.Count > 0;
+
+        var script = BuildSetupScript(settings, tzutil, netsh, withFirewall);
         var result = RunElevatedScript(script, "setup");
 
         if (!result.Ok)
@@ -312,7 +317,7 @@ public static class PrivilegedHelper
 
         return withFirewall
             ? (true, string.Empty)
-            : (true, "The clock switches are ready. Claude was not found, so the firewall rule was skipped.");
+            : (true, "The clock switches are ready. No chat app was found, so the firewall rules were skipped.");
     }
 
     /// <summary>
@@ -321,7 +326,6 @@ public static class PrivilegedHelper
     /// </summary>
     public static string BuildSetupScript(
         GuardSettings settings,
-        string claudeExecutablePath,
         string tzutil,
         string netsh,
         bool withFirewall)
@@ -329,20 +333,33 @@ public static class PrivilegedHelper
         var script = new StringBuilder();
         script.AppendLine("@echo off");
 
-        script.AppendLine(TimeZoneTask(TimeZoneController.WorkTaskName, settings.RequiredTimeZoneId));
-        script.AppendLine(TimeZoneTask(TimeZoneController.HomeTaskName, settings.HomeTimeZoneId));
+        // One clock, so the tasks follow whichever service is selected.
+        script.AppendLine(TimeZoneTask(TimeZoneController.WorkTaskName, settings.Active.RequiredTimeZoneId));
+        script.AppendLine(TimeZoneTask(TimeZoneController.HomeTaskName, settings.Active.HomeTimeZoneId));
 
         if (withFirewall)
         {
-            script.AppendLine(
-                $"\"{netsh}\" advfirewall firewall delete rule name=\"{FirewallController.RuleName}\" >nul 2>&1");
-            script.AppendLine(
-                $"\"{netsh}\" advfirewall firewall add rule name=\"{FirewallController.RuleName}\" " +
-                $"dir=out action=block enable=no program=\"{claudeExecutablePath}\" " +
-                "profile=any description=\"Blocked by Claude Watch while a rule is broken\"");
+            // Every service that has been located gets its own rule and switches,
+            // all inside this one elevated batch, so Windows asks once for the lot.
+            foreach (var profile in settings.Watched)
+            {
+                if (string.IsNullOrWhiteSpace(profile.ExecutablePath))
+                {
+                    continue;
+                }
 
-            script.AppendLine(FirewallTask(FirewallController.OnTaskName, "yes", netsh));
-            script.AppendLine(FirewallTask(FirewallController.OffTaskName, "no", netsh));
+                var ruleName = FirewallController.RuleNameFor(profile);
+
+                script.AppendLine(
+                    $"\"{netsh}\" advfirewall firewall delete rule name=\"{ruleName}\" >nul 2>&1");
+                script.AppendLine(
+                    $"\"{netsh}\" advfirewall firewall add rule name=\"{ruleName}\" " +
+                    $"dir=out action=block enable=no program=\"{profile.ExecutablePath}\" " +
+                    $"profile=any description=\"Blocked by SafeChat while a rule is broken\"");
+
+                script.AppendLine(FirewallTask(FirewallController.OnTaskFor(profile), "yes", netsh, ruleName));
+                script.AppendLine(FirewallTask(FirewallController.OffTaskFor(profile), "no", netsh, ruleName));
+            }
         }
 
         script.AppendLine("exit /b 0");
@@ -353,11 +370,11 @@ public static class PrivilegedHelper
                "/mo \"*[System/EventID=65530]\" " +
                $"/tn \"{taskName}\" /tr \"\\\"{tzutil}\\\" /s \\\"{timeZoneId}\\\"\"";
 
-        string FirewallTask(string taskName, string enable, string netshPath)
+        string FirewallTask(string taskName, string enable, string netshPath, string ruleName)
             => "schtasks /create /f /rl highest /sc ONEVENT /ec Application " +
                "/mo \"*[System/EventID=65530]\" " +
                $"/tn \"{taskName}\" " +
-               $"/tr \"\\\"{netshPath}\\\" advfirewall firewall set rule name=\\\"{FirewallController.RuleName}\\\" new enable={enable}\"";
+               $"/tr \"\\\"{netshPath}\\\" advfirewall firewall set rule name=\\\"{ruleName}\\\" new enable={enable}\"";
     }
 
     public static (bool Ok, string Message) Install(GuardSettings settings)
@@ -367,8 +384,8 @@ public static class PrivilegedHelper
 
         var script = new StringBuilder();
         script.AppendLine("@echo off");
-        script.AppendLine(Line(TimeZoneController.WorkTaskName, settings.RequiredTimeZoneId));
-        script.AppendLine(Line(TimeZoneController.HomeTaskName, settings.HomeTimeZoneId));
+        script.AppendLine(Line(TimeZoneController.WorkTaskName, settings.Active.RequiredTimeZoneId));
+        script.AppendLine(Line(TimeZoneController.HomeTaskName, settings.Active.HomeTimeZoneId));
         script.AppendLine("exit /b 0");
 
         return RunElevatedScript(script.ToString(), "install");

@@ -19,13 +19,46 @@ public sealed class ClaudeLocation
 /// order of certainty, from a process that is running right now down to a
 /// Start Menu shortcut.
 /// </summary>
+/// <summary>What to look for. The strategies are the same for every chat app.</summary>
+public sealed class AppHunt
+{
+    /// <summary>The word that appears in process names, folders and shortcuts.</summary>
+    public string Token { get; init; } = "claude";
+
+    /// <summary>Display name, for the folders under Programs.</summary>
+    public string Name { get; init; } = "Claude";
+
+    /// <summary>The protocol the installer registers, without the colon.</summary>
+    public string Protocol { get; init; } = "claude";
+
+    /// <summary>Publisher folders to look inside, e.g. Programs\Anthropic\Claude.</summary>
+    public string[] Publishers { get; init; } = { "Anthropic" };
+
+    public static AppHunt For(string serviceKey) =>
+        string.Equals(serviceKey, ServiceProfile.ChatGptKey, StringComparison.OrdinalIgnoreCase)
+            ? new AppHunt
+            {
+                Token = "chatgpt",
+                Name = "ChatGPT",
+                Protocol = "chatgpt",
+                Publishers = new[] { "OpenAI" }
+            }
+            : new AppHunt();
+}
+
 public static class ClaudeFinder
 {
-    private static readonly string[] ExecutableNames = { "claude.exe", "Claude.exe" };
+    public static ClaudeLocation Find(string serviceKey) => Find(AppHunt.For(serviceKey));
 
-    public static ClaudeLocation Find()
+    /// <summary>Both casings, since installers disagree about it.</summary>
+    private static string[] ExecutableNames(AppHunt hunt)
+        => new[] { hunt.Token + ".exe", hunt.Name + ".exe" };
+
+    public static ClaudeLocation Find() => Find(new AppHunt());
+
+    public static ClaudeLocation Find(AppHunt hunt)
     {
-        foreach (var attempt in new Func<ClaudeLocation?>[]
+        foreach (var attempt in new Func<AppHunt, ClaudeLocation?>[]
                  {
                      FromRunningProcess,
                      FromUninstallEntries,
@@ -37,7 +70,7 @@ public static class ClaudeFinder
         {
             try
             {
-                var found = attempt();
+                var found = attempt(hunt);
                 if (found is { Found: true } && File.Exists(found.Path))
                 {
                     return found;
@@ -54,13 +87,13 @@ public static class ClaudeFinder
 
     // -------------------------------------------------------- 1. running now
 
-    private static ClaudeLocation? FromRunningProcess()
+    private static ClaudeLocation? FromRunningProcess(AppHunt hunt)
     {
         foreach (var process in Process.GetProcesses())
         {
             try
             {
-                if (!process.ProcessName.StartsWith("claude", StringComparison.OrdinalIgnoreCase))
+                if (!process.ProcessName.StartsWith(hunt.Token, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -86,7 +119,7 @@ public static class ClaudeFinder
 
     // ------------------------------------------------------ 2. installed list
 
-    private static ClaudeLocation? FromUninstallEntries()
+    private static ClaudeLocation? FromUninstallEntries(AppHunt hunt)
     {
         var roots = new (RegistryKey Hive, string Path)[]
         {
@@ -108,7 +141,7 @@ public static class ClaudeFinder
                 using var entry = parent.OpenSubKey(name);
                 var display = entry?.GetValue("DisplayName") as string;
 
-                if (display is null || display.IndexOf("claude", StringComparison.OrdinalIgnoreCase) < 0)
+                if (display is null || display.IndexOf(hunt.Token, StringComparison.OrdinalIgnoreCase) < 0)
                 {
                     continue;
                 }
@@ -124,7 +157,7 @@ public static class ClaudeFinder
 
                 if (entry?.GetValue("InstallLocation") is string folder && Directory.Exists(folder))
                 {
-                    var found = NewestExecutableIn(folder);
+                    var found = NewestExecutableIn(folder, hunt);
                     if (found is not null)
                     {
                         return new ClaudeLocation { Path = found, Source = "installed programs" };
@@ -138,11 +171,11 @@ public static class ClaudeFinder
 
     // ---------------------------------------------------- 3. claude:// handler
 
-    private static ClaudeLocation? FromProtocolHandler()
+    private static ClaudeLocation? FromProtocolHandler(AppHunt hunt)
     {
         foreach (var root in new[] { Registry.CurrentUser, Registry.LocalMachine })
         {
-            using var key = root.OpenSubKey(@"SOFTWARE\Classes\claude\shell\open\command");
+            using var key = root.OpenSubKey($@"SOFTWARE\Classes\{hunt.Protocol}\shell\open\command");
             if (key?.GetValue(null) is not string command || command.Length == 0)
             {
                 continue;
@@ -154,7 +187,7 @@ public static class ClaudeFinder
 
             if (File.Exists(path))
             {
-                return new ClaudeLocation { Path = path, Source = "claude:// handler" };
+                return new ClaudeLocation { Path = path, Source = $"{hunt.Protocol}:// handler" };
             }
         }
 
@@ -163,25 +196,25 @@ public static class ClaudeFinder
 
     // ------------------------------------------------- 4. versioned installs
 
-    private static ClaudeLocation? FromVersionedFolders()
+    private static ClaudeLocation? FromVersionedFolders(AppHunt hunt)
     {
-        foreach (var root in InstallRoots())
+        foreach (var root in InstallRoots(hunt))
         {
             if (!Directory.Exists(root))
             {
                 continue;
             }
 
-            var direct = NewestExecutableIn(root);
+            var direct = NewestExecutableIn(root, hunt);
             if (direct is not null)
             {
                 return new ClaudeLocation { Path = direct, Source = "install folder" };
             }
 
-            // Squirrel-style layout: app-1.2.3\claude.exe next to Update.exe.
+            // Squirrel-style layout: app-1.2.3\<app>.exe next to Update.exe.
             var versioned = Directory.GetDirectories(root, "app-*")
                 .OrderByDescending(VersionKey)
-                .Select(NewestExecutableIn)
+                .Select(folder => NewestExecutableIn(folder, hunt))
                 .FirstOrDefault(p => p is not null);
 
             if (versioned is not null)
@@ -193,7 +226,7 @@ public static class ClaudeFinder
         return null;
     }
 
-    private static IEnumerable<string> InstallRoots()
+    private static IEnumerable<string> InstallRoots(AppHunt hunt)
     {
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -203,35 +236,38 @@ public static class ClaudeFinder
         if (local.Length > 0)
         {
             yield return Path.Combine(local, "AnthropicClaude");
-            yield return Path.Combine(local, "Programs", "Claude");
-            yield return Path.Combine(local, "Programs", "claude");
-            yield return Path.Combine(local, "Claude");
+            yield return Path.Combine(local, "Programs", hunt.Name);
+            yield return Path.Combine(local, "Programs", hunt.Token);
+            yield return Path.Combine(local, hunt.Name);
         }
 
         if (roaming.Length > 0)
         {
-            yield return Path.Combine(roaming, "Claude");
+            yield return Path.Combine(roaming, hunt.Name);
         }
 
         if (programs.Length > 0)
         {
-            yield return Path.Combine(programs, "Claude");
-            yield return Path.Combine(programs, "Anthropic", "Claude");
+            yield return Path.Combine(programs, hunt.Name);
+            foreach (var publisher in hunt.Publishers)
+            {
+                yield return Path.Combine(programs, publisher, hunt.Name);
+            }
         }
 
         if (programsX86.Length > 0)
         {
-            yield return Path.Combine(programsX86, "Claude");
+            yield return Path.Combine(programsX86, hunt.Name);
         }
     }
 
     // ------------------------------------------------------ 5. plain guesses
 
-    private static ClaudeLocation? FromKnownPaths()
+    private static ClaudeLocation? FromKnownPaths(AppHunt hunt)
     {
-        foreach (var root in InstallRoots())
+        foreach (var root in InstallRoots(hunt))
         {
-            foreach (var name in ExecutableNames)
+            foreach (var name in ExecutableNames(hunt))
             {
                 var candidate = Path.Combine(root, name);
                 if (File.Exists(candidate))
@@ -246,7 +282,7 @@ public static class ClaudeFinder
 
     // ------------------------------------------------------- 6. Start Menu
 
-    private static ClaudeLocation? FromStartMenu()
+    private static ClaudeLocation? FromStartMenu(AppHunt hunt)
     {
         var folders = new[]
         {
@@ -262,7 +298,7 @@ public static class ClaudeFinder
 
             try
             {
-                links = Directory.EnumerateFiles(folder, "*claude*.lnk", SearchOption.AllDirectories);
+                links = Directory.EnumerateFiles(folder, $"*{hunt.Token}*.lnk", SearchOption.AllDirectories);
             }
             catch
             {
@@ -319,9 +355,9 @@ public static class ClaudeFinder
 
     // ------------------------------------------------------------- helpers
 
-    private static string? NewestExecutableIn(string folder)
+    private static string? NewestExecutableIn(string folder, AppHunt hunt)
     {
-        foreach (var name in ExecutableNames)
+        foreach (var name in ExecutableNames(hunt))
         {
             var candidate = Path.Combine(folder, name);
             if (File.Exists(candidate))

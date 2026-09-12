@@ -42,6 +42,10 @@ public static class Program
         AnIdleMeshVpnIsNotProtection();
         TheDefaultPatternStillFindsTailscale();
         ThePriceListIsReadCorrectly();
+        TheLicenceDecidesWhoIsProtected();
+        AnOldSettingsFileKeepsItsRules();
+        EachServiceIsFoundSeparately();
+        TheLockedStateEnforcesNothing();
 
         Console.WriteLine(new string('-', 48));
 
@@ -194,7 +198,12 @@ public static class Program
     {
         var settings = Defaults();
         settings.EnforceVpn = false;
-        settings.EnforceTimeZone = false;
+        settings.EnsureServices();
+
+        foreach (var profile in settings.Services)
+        {
+            profile.EnforceTimeZone = false;
+        }
 
         var decision = Evaluate(vpn: false, claude: 2, tz: "Iran Standard Time", settings: settings);
         Check("All rules off stops nothing", !decision.ShouldStopClaude);
@@ -236,18 +245,21 @@ public static class Program
         {
             RefreshSeconds = 900,
             VpnMissTolerance = 0,
-            ProcessNamePattern = "([unclosed",
+
             VpnAdapterPattern = string.Empty,
             AccentColor = string.Empty,
             Language = "kl",
             TrustedAdapters = new List<string> { " Wintun ", "wintun", string.Empty }
         };
 
+        settings.EnsureServices();
+        settings.Active.ProcessNamePattern = "([unclosed";
+
         SettingsStore.Sanitize(settings);
 
         Check("Refresh is clamped", Math.Abs(settings.RefreshSeconds - 60) < 0.001);
         Check("Tolerance is clamped", settings.VpnMissTolerance == 1);
-        Check("A broken process pattern is replaced", settings.ProcessNamePattern == GuardSettings.DefaultProcessPattern);
+        Check("A broken process pattern is replaced", settings.Active.ProcessNamePattern == GuardSettings.DefaultProcessPattern);
         Check("An empty VPN pattern is replaced", settings.VpnAdapterPattern == GuardSettings.DefaultVpnPattern);
         Check("Accent falls back", settings.AccentColor == "#D97757");
         Check("Unknown language falls back", settings.Language == "en");
@@ -271,8 +283,8 @@ public static class Program
     {
         var watcher = new ProcessWatcher();
         var settings = Defaults();
-        settings.ExtraProcessNames.Add("cursor");
-        settings.ExcludedProcessNames.Add("Claude Updater");
+        settings.Active.ExtraProcessNames.Add("cursor");
+        settings.Active.ExcludedProcessNames.Add("Claude Updater");
 
         Check("An extra name matches", watcher.IsTarget("cursor.exe", settings));
         Check("An excluded name is spared", !watcher.IsTarget("Claude Updater.exe", settings));
@@ -296,9 +308,17 @@ public static class Program
     private static void TheSetupScriptIsWellFormed()
     {
         var settings = Defaults();
+        settings.EnsureServices();
+        settings.Active.ExecutablePath = @"C:\Users\me\AppData\Local\AnthropicClaude\app-1.2.3\claude.exe";
+
+        // Only Claude is on here, so exactly one rule and one pair of switches.
+        foreach (var other in settings.Services.Where(x => x.Key != settings.Active.Key))
+        {
+            other.Enabled = false;
+        }
+
         var script = PrivilegedHelper.BuildSetupScript(
             settings,
-            @"C:\Users\me\AppData\Local\AnthropicClaude\app-1.2.3\claude.exe",
             @"C:\Windows\System32\tzutil.exe",
             @"C:\Windows\System32\netsh.exe",
             withFirewall: true);
@@ -312,9 +332,9 @@ public static class Program
         Check("the script ends cleanly", lines[^1] == "exit /b 0");
 
         Check("both clock switches are registered",
-            lines.Count(l => l.Contains("ClaudeWatch-SetWorkTimeZone") || l.Contains("ClaudeWatch-SetHomeTimeZone")) == 2);
+            lines.Count(l => l.Contains("SafeChat-SetWorkTimeZone") || l.Contains("SafeChat-SetHomeTimeZone")) == 2);
         Check("both firewall switches are registered",
-            lines.Count(l => l.Contains("ClaudeWatch-FirewallOn") || l.Contains("ClaudeWatch-FirewallOff")) == 2);
+            lines.Count(l => l.Contains("SafeChat-FirewallOn") || l.Contains("SafeChat-FirewallOff")) == 2);
         Check("the block rule is created", lines.Any(l => l.Contains("advfirewall firewall add rule")));
         Check("the old rule is cleared first",
             lines.FindIndex(l => l.Contains("delete rule")) < lines.FindIndex(l => l.Contains("add rule")));
@@ -323,8 +343,8 @@ public static class Program
             lines.Where(l => l.StartsWith("schtasks")).All(l => l.Contains("/rl highest")));
         Check("no task fires on its own",
             lines.Where(l => l.StartsWith("schtasks")).All(l => l.Contains("ONEVENT")));
-        Check("the work zone is passed through", script.Contains(settings.RequiredTimeZoneId));
-        Check("the home zone is passed through", script.Contains(settings.HomeTimeZoneId));
+        Check("the work zone is passed through", script.Contains(settings.Active.RequiredTimeZoneId));
+        Check("the home zone is passed through", script.Contains(settings.Active.HomeTimeZoneId));
         Check("Claude's path is passed through", script.Contains(@"app-1.2.3\claude.exe"));
 
         // Every line must have balanced quotes, or cmd hands schtasks nonsense.
@@ -341,10 +361,10 @@ public static class Program
         Check("every line has balanced quotes", true);
 
         var noFirewall = PrivilegedHelper.BuildSetupScript(
-            settings, string.Empty, "tzutil.exe", "netsh.exe", withFirewall: false);
+            settings, "tzutil.exe", "netsh.exe", withFirewall: false);
 
         Check("without Claude the firewall part is skipped", !noFirewall.Contains("advfirewall"));
-        Check("without Claude the clock switches remain", noFirewall.Contains("ClaudeWatch-SetWorkTimeZone"));
+        Check("without Claude the clock switches remain", noFirewall.Contains("SafeChat-SetWorkTimeZone"));
     }
 
     private static void GraceHoldsFireThenStops()
@@ -520,6 +540,170 @@ public static class Program
         Check("nothing is shown for a zero price", PricingClient.Money(0, false).Length == 0);
         Check("thousands are grouped", PricingClient.Money(5_160_000, false) == "5,160,000");
         Check("Persian digits are used in Persian", PricingClient.Money(5_160_000, true).Contains('۵'));
+    }
+
+    /// <summary>
+    /// The rules that decide whether someone's protection runs. The one that
+    /// matters most is the last: an unreachable server must never switch a
+    /// paying customer's guard off.
+    /// </summary>
+    private static void TheLicenceDecidesWhoIsProtected()
+    {
+        Console.WriteLine("\nLicence");
+
+        var now = DateTimeOffset.UtcNow;
+
+        var fresh = new LicenceStatus { InstalledAt = now.AddDays(-1), TrialDays = 3, State = LicenceState.Trial };
+        Check("a fresh install is protected", LicenceClient.Allowed(fresh, now));
+        Check("it reports the days left", fresh.TrialDaysLeft(now) == 2);
+
+        var used = new LicenceStatus { InstalledAt = now.AddDays(-5), TrialDays = 3, State = LicenceState.Trial };
+        Check("a finished trial has no days left", used.TrialDaysLeft(now) == 0);
+        Check("a finished trial is not protected", !LicenceClient.Allowed(used, now));
+
+        var keyed = new LicenceStatus { State = LicenceState.Licensed, ExpiresAt = now.AddDays(10) };
+        Check("an active key is protected", LicenceClient.Allowed(keyed, now));
+
+        var ended = new LicenceStatus { State = LicenceState.Licensed, ExpiresAt = now.AddDays(-1) };
+        Check("a key past its date is not", !LicenceClient.Allowed(ended, now));
+
+        foreach (var state in new[] { LicenceState.NeedsKey, LicenceState.Expired, LicenceState.Revoked, LicenceState.WrongDevice })
+        {
+            Check($"{state} is not protected", !LicenceClient.Allowed(new LicenceStatus { State = state }, now));
+        }
+
+        var notRequired = new LicenceStatus { State = LicenceState.NeedsKey, KeysRequired = false };
+        Check("with keys switched off everyone is protected", LicenceClient.Allowed(notRequired, now));
+
+        // The important one. A key confirmed a week ago, server unreachable
+        // since: protection must keep running to its own end date.
+        var offline = new LicenceStatus
+        {
+            State = LicenceState.Licensed,
+            ExpiresAt = now.AddDays(20),
+            LastConfirmedAt = now.AddDays(-7)
+        };
+        Check("an unreachable server does not switch protection off", LicenceClient.Allowed(offline, now));
+
+        Check("a device id is stable", LicenceClient.DeviceId() == LicenceClient.DeviceId());
+        Check("a device id gives nothing away", LicenceClient.DeviceId().Length == 32);
+    }
+
+    /// <summary>Upgrading must not quietly reset somebody's rules.</summary>
+    private static void AnOldSettingsFileKeepsItsRules()
+    {
+        Console.WriteLine("\nUpgrading an old settings file");
+
+        const string old = """
+        {
+          "enforceVpn": true,
+          "enforceTimeZone": true,
+          "requiredTimeZoneId": "Central European Standard Time",
+          "homeTimeZoneId": "Iran Standard Time",
+          "processNamePattern": "^myclaude",
+          "claudeExecutablePath": "C:\\Apps\\claude.exe",
+          "enableFirewallKillSwitch": true,
+          "firewallRulePath": "C:\\Apps\\claude.exe",
+          "extraProcessNames": ["claude-helper"],
+          "excludedProcessNames": ["claude-notes"],
+          "language": "fa"
+        }
+        """;
+
+        var settings = System.Text.Json.JsonSerializer.Deserialize<GuardSettings>(old,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        SettingsStore.Migrate(settings, old);
+        SettingsStore.Sanitize(settings);
+
+        var claude = settings.ByKey(ServiceProfile.ClaudeKey)!;
+
+        Check("the old zone survives", claude.RequiredTimeZoneId == "Central European Standard Time");
+        Check("the old process pattern survives", claude.ProcessNamePattern == "^myclaude");
+        Check("the old path survives", claude.ExecutablePath == @"C:\Apps\claude.exe");
+        Check("the kill switch stays on", claude.EnableFirewallKillSwitch);
+        Check("extra names survive", claude.ExtraProcessNames.Contains("claude-helper"));
+        Check("excluded names survive", claude.ExcludedProcessNames.Contains("claude-notes"));
+        Check("the language survives", settings.Language == "fa");
+
+        // Someone upgrading never asked to guard ChatGPT.
+        Check("ChatGPT is not switched on behind their back",
+            settings.ByKey(ServiceProfile.ChatGptKey)!.Enabled == false);
+
+        // Running it twice must not undo the first pass.
+        SettingsStore.Migrate(settings, old);
+        Check("migrating twice changes nothing", settings.ByKey(ServiceProfile.ClaudeKey)!.ProcessNamePattern == "^myclaude");
+    }
+
+    private static void EachServiceIsFoundSeparately()
+    {
+        Console.WriteLine("\nTelling the two apps apart");
+
+        var claude = ServiceProfile.Claude();
+        var chatgpt = ServiceProfile.ChatGpt();
+        var watcher = new ProcessWatcher();
+
+        Check("claude.exe is Claude's", watcher.IsTarget("claude", claude));
+        Check("claude.exe is not ChatGPT's", !watcher.IsTarget("claude", chatgpt));
+        Check("chatgpt.exe is ChatGPT's", watcher.IsTarget("ChatGPT", chatgpt));
+        Check("chatgpt.exe is not Claude's", !watcher.IsTarget("ChatGPT", claude));
+
+        // The helper processes are the whole reason the pattern allows a
+        // separator: they are the ones holding connections open, and missing one
+        // means a leak. The cost is that a third-party app named "ChatGPT
+        // Something" is caught too, which the "never stop" list exists for.
+        Check("ChatGPT Helper is caught", watcher.IsTarget("ChatGPT Helper", chatgpt));
+        Check("Claude Helper is caught", watcher.IsTarget("Claude Helper", claude));
+
+        // A word that merely starts the same way is never touched.
+        Check("claudia is left alone", !watcher.IsTarget("claudia", claude));
+        Check("chatgptx is left alone", !watcher.IsTarget("chatgptx", chatgpt));
+
+        chatgpt.ExcludedProcessNames.Add("ChatGPT Exporter");
+        Check("an excluded third-party app is spared", !watcher.IsTarget("ChatGPT Exporter", chatgpt));
+
+        Check("each has its own firewall rule",
+            FirewallController.RuleNameFor(claude) != FirewallController.RuleNameFor(chatgpt));
+        Check("each has its own switches",
+            FirewallController.OnTaskFor(claude) != FirewallController.OnTaskFor(chatgpt));
+        Check("the rules are named for SafeChat",
+            FirewallController.RuleNameFor(claude).StartsWith("SafeChat"));
+
+        var settings = Defaults();
+        settings.EnsureServices();
+        Check("both are watched by default", settings.Watched.Count() == 2);
+
+        settings.ByKey(ServiceProfile.ChatGptKey)!.Enabled = false;
+        Check("switching one off leaves one watched", settings.Watched.Count() == 1);
+        Check("the remaining one is Claude", settings.Watched.First().Key == ServiceProfile.ClaudeKey);
+
+        Check("each carries its own colour", claude.Accent != chatgpt.Accent);
+    }
+
+    /// <summary>Without a licence the guard must do nothing, and say so.</summary>
+    private static void TheLockedStateEnforcesNothing()
+    {
+        Console.WriteLine("\nLocked");
+
+        var settings = Defaults();
+        var state = new GuardState();
+
+        var input = new GuardInput
+        {
+            VpnConnected = false,
+            ClaudeProcessCount = 3,
+            CurrentTimeZoneId = "Iran Standard Time",
+            Now = DateTimeOffset.Now,
+            Licensed = false
+        };
+
+        var decision = GuardEngine.Evaluate(input, settings, state);
+
+        Check("locked stops nothing", !decision.ShouldStopClaude);
+        Check("locked changes no clock", !decision.ShouldChangeTimeZone);
+        Check("locked reports itself", decision.Phase == GuardPhase.Locked);
+        Check("locked does not claim to be protecting", decision.HeadlineKey == "Head_Locked");
+        Check("locked starts no countdown", !decision.InGrace);
     }
 
     // -------------------------------------------------------------- helpers

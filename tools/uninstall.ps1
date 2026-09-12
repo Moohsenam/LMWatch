@@ -23,7 +23,7 @@ Write-Host '  Shortcuts removed.' -ForegroundColor Gray
 Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'ClaudeWatch' -Force
 Write-Host '  Start-with-Windows entry removed.' -ForegroundColor Gray
 
-$tasks = @('ClaudeWatch-SetWorkTimeZone', 'ClaudeWatch-SetHomeTimeZone')
+$tasks = @('SafeChat-SetWorkTimeZone', 'SafeChat-SetHomeTimeZone')
 $present = $tasks | Where-Object { schtasks /query /tn $_ 2>$null; $LASTEXITCODE -eq 0 }
 
 if ($present) {

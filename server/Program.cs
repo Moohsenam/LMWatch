@@ -40,7 +40,7 @@ if (!string.IsNullOrEmpty(generated))
 {
     var noticeFile = Path.Combine(dataRoot, "FIRST-RUN-PASSWORD.txt");
     File.WriteAllText(noticeFile,
-        $"Claude Watch orders — admin password{Environment.NewLine}{generated}{Environment.NewLine}" +
+        $"SafeChat orders — admin password{Environment.NewLine}{generated}{Environment.NewLine}" +
         $"Change it in the admin panel, then delete this file.{Environment.NewLine}");
 
     Console.WriteLine();

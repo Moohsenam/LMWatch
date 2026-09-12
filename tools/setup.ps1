@@ -294,11 +294,11 @@ try {
     $version = (Get-Item $exe).VersionInfo.FileVersion
     if (-not $version) { $version = '1.0.0' }
 
-    $zip = Join-Path $betaFolder "ClaudeWatch-beta-$version.zip"
+    $zip = Join-Path $betaFolder "SafeChat-beta-$version.zip"
     if (Test-Path $zip) { Remove-Item $zip -Force }
 
     Compress-Archive -Path (Join-Path $output '*') -DestinationPath $zip
-    Say "Beta package: beta\ClaudeWatch-beta-$version.zip" 'Green'
+    Say "Beta package: beta\SafeChat-beta-$version.zip" 'Green'
     Say 'Whoever gets it needs the .NET 8 Desktop Runtime.' 'DarkGray'
 }
 catch {
@@ -328,10 +328,10 @@ if ($SelfContained) {
     }
 
     if ($LASTEXITCODE -eq 0) {
-        $zip = Join-Path $root 'beta\ClaudeWatch-beta-standalone.zip'
+        $zip = Join-Path $root 'beta\SafeChat-beta-standalone.zip'
         if (Test-Path $zip) { Remove-Item $zip -Force }
         Compress-Archive -Path (Join-Path $standalone '*') -DestinationPath $zip
-        Say 'Standalone package: beta\ClaudeWatch-beta-standalone.zip' 'Green'
+        Say 'Standalone package: beta\SafeChat-beta-standalone.zip' 'Green'
         Say 'That one runs on any Windows 10 or 11 machine with nothing installed.' 'DarkGray'
     }
     else {

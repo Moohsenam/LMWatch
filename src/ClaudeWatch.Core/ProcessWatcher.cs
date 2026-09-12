@@ -12,6 +12,12 @@ public sealed class ClaudeProcess
     public long MemoryBytes { get; init; }
     public string WindowTitle { get; init; } = string.Empty;
 
+    /// <summary>Which service this process belongs to: claude or chatgpt.</summary>
+    public string ServiceKey { get; init; } = string.Empty;
+
+    /// <summary>The service's display name, for the process list.</summary>
+    public string ServiceName { get; init; } = string.Empty;
+
     public string MemoryDisplay => MemoryBytes <= 0
         ? "—"
         : MemoryBytes >= 1024L * 1024 * 1024
@@ -36,14 +42,37 @@ public sealed class StopResult
 /// </summary>
 public sealed class ProcessWatcher
 {
-    private Regex? _compiled;
-    private string _compiledPattern = string.Empty;
+    // One entry per pattern. With two services polled every couple of seconds a
+    // single slot would recompile on every alternation.
+    private readonly Dictionary<string, Regex?> _compiled = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Every process belonging to any watched service. The VPN rule is about the
+    /// machine, not about which tab you happen to be looking at, so both apps are
+    /// scanned whenever both are switched on.
+    /// </summary>
     public IReadOnlyList<ClaudeProcess> Scan(GuardSettings settings)
+    {
+        var found = new List<ClaudeProcess>();
+
+        foreach (var profile in settings.Watched)
+        {
+            found.AddRange(Scan(profile));
+        }
+
+        return found
+            .GroupBy(p => p.Pid)
+            .Select(g => g.First())
+            .OrderByDescending(p => p.MemoryBytes)
+            .ThenBy(p => p.Pid)
+            .ToList();
+    }
+
+    public IReadOnlyList<ClaudeProcess> Scan(ServiceProfile profile)
     {
         var self = Environment.ProcessId;
         var result = new List<ClaudeProcess>();
-        var regex = GetRegex(settings.ProcessNamePattern);
+        var regex = GetRegex(profile.ProcessNamePattern);
 
         Process[] all;
         try
@@ -65,7 +94,7 @@ public sealed class ProcessWatcher
                 }
 
                 var name = process.ProcessName;
-                if (string.IsNullOrEmpty(name) || !IsTarget(name, regex, settings))
+                if (string.IsNullOrEmpty(name) || !IsTarget(name, regex, profile))
                 {
                     continue;
                 }
@@ -87,7 +116,9 @@ public sealed class ProcessWatcher
                     Path = path,
                     Started = started,
                     MemoryBytes = memory,
-                    WindowTitle = title
+                    WindowTitle = title,
+                    ServiceKey = profile.Key,
+                    ServiceName = profile.Name
                 });
             }
             catch
@@ -106,19 +137,23 @@ public sealed class ProcessWatcher
             .ToList();
     }
 
+    /// <summary>True when this process belongs to any watched service.</summary>
     public bool IsTarget(string processName, GuardSettings settings)
-        => IsTarget(processName, GetRegex(settings.ProcessNamePattern), settings);
+        => settings.Watched.Any(profile => IsTarget(processName, GetRegex(profile.ProcessNamePattern), profile));
 
-    private static bool IsTarget(string processName, Regex? regex, GuardSettings settings)
+    public bool IsTarget(string processName, ServiceProfile profile)
+        => IsTarget(processName, GetRegex(profile.ProcessNamePattern), profile);
+
+    private static bool IsTarget(string processName, Regex? regex, ServiceProfile profile)
     {
         var bare = System.IO.Path.GetFileNameWithoutExtension(processName);
 
-        if (settings.ExcludedProcessNames.Any(x => x.Equals(bare, StringComparison.OrdinalIgnoreCase)))
+        if (profile.ExcludedProcessNames.Any(x => x.Equals(bare, StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }
 
-        if (settings.ExtraProcessNames.Any(x => x.Equals(bare, StringComparison.OrdinalIgnoreCase)))
+        if (profile.ExtraProcessNames.Any(x => x.Equals(bare, StringComparison.OrdinalIgnoreCase)))
         {
             return true;
         }
@@ -200,22 +235,30 @@ public sealed class ProcessWatcher
             return null;
         }
 
-        if (_compiled is not null && _compiledPattern == pattern)
+        if (_compiled.TryGetValue(pattern, out var cached))
         {
-            return _compiled;
+            return cached;
         }
+
+        Regex? made;
 
         try
         {
-            _compiled = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromMilliseconds(250));
-            _compiledPattern = pattern;
+            made = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromMilliseconds(250));
         }
         catch (ArgumentException)
         {
-            _compiled = null;
-            _compiledPattern = pattern;
+            // A pattern the user broke in Settings. Remembered as null so it is
+            // not retried on every poll.
+            made = null;
         }
 
-        return _compiled;
+        if (_compiled.Count > 16)
+        {
+            _compiled.Clear();
+        }
+
+        _compiled[pattern] = made;
+        return made;
     }
 }

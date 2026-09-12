@@ -7,7 +7,7 @@ namespace ClaudeWatch.Core;
 public static class StartupRegistration
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "ClaudeWatch";
+    private const string ValueName = "SafeChat";
 
     public static bool IsEnabled()
     {
@@ -63,7 +63,7 @@ public static class ClaudeLauncher
 
     public static (bool Ok, string Message) Launch(GuardSettings settings)
     {
-        var path = settings.ClaudeExecutablePath;
+        var path = settings.Active.ExecutablePath;
 
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
@@ -71,7 +71,7 @@ public static class ClaudeLauncher
 
             if (!string.IsNullOrWhiteSpace(path))
             {
-                settings.ClaudeExecutablePath = path;
+                settings.Active.ExecutablePath = path;
             }
         }
 

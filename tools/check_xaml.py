@@ -101,7 +101,9 @@ item_members = {
     # PricedPlan
     "Popular", "Toman", "Period", "Usd", "Variable", "LabelFa", "NoteFa",
     # misc paths used inside templates
-    "Foreground", "Count", "Length",
+    "Foreground", "Count", "Length", "BorderBrush",
+    # ServiceTab
+    "Selected", "Accent", "Name",
 }
 
 # Only a positional path counts: "{Binding Foo}" or "{Binding Path=Foo}", never a

@@ -26,7 +26,7 @@ packages, so it works with no connection and no VPN. If a reference pack is
 missing it retries once with the normal package source.
 
 **A copy that runs anywhere:** double-click **Build standalone beta.cmd**. It
-produces `beta\ClaudeWatch-beta-standalone.zip`, which runs on any Windows 10 or
+produces `beta\SafeChat-beta-standalone.zip`, which runs on any Windows 10 or
 11 machine with nothing installed at all. It is large and needs internet while
 building.
 

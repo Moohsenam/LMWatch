@@ -11,6 +11,21 @@ namespace ClaudeWatch.App
         internal Border RootShell = new();
     }
 
+    public partial class SetupWizard
+    {
+        internal StackPanel StepLanguage = new();
+        internal StackPanel StepApps = new();
+        internal StackPanel StepZone = new();
+        internal StackPanel StepKey = new();
+        internal CheckBox WantClaude = new();
+        internal CheckBox WantChatGpt = new();
+        internal TextBlock AppsWarning = new();
+        internal TextBlock StepDots = new();
+        internal Button BackButton = new();
+        internal Button NextButton = new();
+        internal Button SkipButton = new();
+    }
+
     public partial class GraceOverlay
     {
         internal Shape Ring = new Ellipse();
@@ -30,6 +45,7 @@ namespace ClaudeWatch.App.Views
 {
     public partial class DashboardView { }
     public partial class BuyView { }
+    public partial class LicenceView { }
     public partial class OrdersView { }
     public partial class UsageView { }
     public partial class ProcessesView { }

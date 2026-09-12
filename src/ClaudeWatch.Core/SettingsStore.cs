@@ -29,8 +29,14 @@ public sealed class SettingsStore
             }
 
             var json = File.ReadAllText(_path);
-            var settings = JsonSerializer.Deserialize<GuardSettings>(json, Options);
-            return Sanitize(settings ?? new GuardSettings());
+            var settings = JsonSerializer.Deserialize<GuardSettings>(json, Options) ?? new GuardSettings();
+
+            // A file written before services existed keeps its rules: they are
+            // read straight out of the old flat shape and become the Claude
+            // profile, so nobody's setup resets itself on upgrade.
+            Migrate(settings, json);
+
+            return Sanitize(settings);
         }
         catch
         {
@@ -60,6 +66,88 @@ public sealed class SettingsStore
         }
     }
 
+    /// <summary>
+    /// Moves the pre-services settings shape into the Claude profile. Reads the
+    /// raw document because those properties no longer exist on GuardSettings,
+    /// so deserialization has already dropped them.
+    /// </summary>
+    public static void Migrate(GuardSettings settings, string json)
+    {
+        if (settings.Services.Count > 0)
+        {
+            return;
+        }
+
+        settings.EnsureServices();
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            var claude = settings.ByKey(ServiceProfile.ClaudeKey);
+            if (claude is null)
+            {
+                return;
+            }
+
+            claude.ProcessNamePattern = Str(root, "processNamePattern", claude.ProcessNamePattern);
+            claude.ExecutablePath = Str(root, "claudeExecutablePath", claude.ExecutablePath);
+            claude.RequiredTimeZoneId = Str(root, "requiredTimeZoneId", claude.RequiredTimeZoneId);
+            claude.HomeTimeZoneId = Str(root, "homeTimeZoneId", claude.HomeTimeZoneId);
+            claude.FirewallRulePath = Str(root, "firewallRulePath", claude.FirewallRulePath);
+            claude.EnforceTimeZone = Flag(root, "enforceTimeZone", claude.EnforceTimeZone);
+            claude.EnableFirewallKillSwitch = Flag(root, "enableFirewallKillSwitch", claude.EnableFirewallKillSwitch);
+            claude.ExtraProcessNames = Strings(root, "extraProcessNames");
+            claude.ExcludedProcessNames = Strings(root, "excludedProcessNames");
+
+            // Someone upgrading was only ever watching Claude. Leaving ChatGPT on
+            // would start guarding an app they never asked about.
+            var chatgpt = settings.ByKey(ServiceProfile.ChatGptKey);
+            if (chatgpt is not null)
+            {
+                chatgpt.Enabled = false;
+            }
+        }
+        catch (JsonException)
+        {
+            // An unreadable file just keeps the defaults.
+        }
+
+        static string Str(JsonElement root, string name, string fallback)
+            => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? fallback
+                : fallback;
+
+        static bool Flag(JsonElement root, string name, bool fallback)
+            => root.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? value.GetBoolean()
+                : fallback;
+
+        static List<string> Strings(JsonElement root, string name)
+        {
+            var result = new List<string>();
+
+            if (root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in value.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String && item.GetString() is { } text)
+                    {
+                        result.Add(text);
+                    }
+                }
+            }
+
+            return result;
+        }
+    }
+
     public static GuardSettings Sanitize(GuardSettings settings)
     {
         settings.RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 0.5, 60);
@@ -67,9 +155,32 @@ public sealed class SettingsStore
         settings.GraceSeconds = Math.Clamp(settings.GraceSeconds, 0, 300);
         settings.LogRetentionDays = Math.Clamp(settings.LogRetentionDays, 1, 365);
 
-        if (string.IsNullOrWhiteSpace(settings.ProcessNamePattern) || !VpnDetector.IsValidRegex(settings.ProcessNamePattern))
+        settings.EnsureServices();
+
+        foreach (var profile in settings.Services)
         {
-            settings.ProcessNamePattern = GuardSettings.DefaultProcessPattern;
+            var fallback = profile.Key == ServiceProfile.ChatGptKey
+                ? ServiceProfile.ChatGpt().ProcessNamePattern
+                : GuardSettings.DefaultProcessPattern;
+
+            if (string.IsNullOrWhiteSpace(profile.ProcessNamePattern) || !VpnDetector.IsValidRegex(profile.ProcessNamePattern))
+            {
+                profile.ProcessNamePattern = fallback;
+            }
+
+            if (string.IsNullOrWhiteSpace(profile.Accent))
+            {
+                profile.Accent = profile.Key == ServiceProfile.ChatGptKey ? "#10A37F" : "#D97757";
+            }
+
+            profile.ExtraProcessNames = Clean(profile.ExtraProcessNames);
+            profile.ExcludedProcessNames = Clean(profile.ExcludedProcessNames);
+        }
+
+        // Never leave the window pointing at a service that is gone.
+        if (settings.ByKey(settings.ActiveServiceKey) is null)
+        {
+            settings.ActiveServiceKey = settings.Services[0].Key;
         }
 
         if (string.IsNullOrWhiteSpace(settings.VpnAdapterPattern) || !VpnDetector.IsValidRegex(settings.VpnAdapterPattern))
@@ -89,8 +200,6 @@ public sealed class SettingsStore
 
         settings.TrustedAdapters = Clean(settings.TrustedAdapters);
         settings.IgnoredAdapters = Clean(settings.IgnoredAdapters);
-        settings.ExtraProcessNames = Clean(settings.ExtraProcessNames);
-        settings.ExcludedProcessNames = Clean(settings.ExcludedProcessNames);
 
         return settings;
     }

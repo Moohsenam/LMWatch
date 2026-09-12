@@ -19,7 +19,10 @@ public enum GuardPhase
     Paused,
 
     /// <summary>Every rule switched off in settings.</summary>
-    Off
+    Off,
+
+    /// <summary>No key and the trial is over. Protection is not running.</summary>
+    Locked
 }
 
 /// <summary>A single poll of the machine: what is true right now.</summary>
@@ -30,6 +33,14 @@ public sealed class GuardInput
     public int ClaudeProcessCount { get; init; }
     public string CurrentTimeZoneId { get; init; } = string.Empty;
     public DateTimeOffset Now { get; init; } = DateTimeOffset.Now;
+
+    /// <summary>
+    /// False once the trial is over with no active key. The guard then does
+    /// nothing at all: no stopping, no clock changes, no firewall. Buying and
+    /// ordering stay open, which is the whole point of letting people install
+    /// first.
+    /// </summary>
+    public bool Licensed { get; init; } = true;
 }
 
 /// <summary>What the guard remembers between polls.</summary>
@@ -105,15 +116,15 @@ public static class GuardEngine
     {
         if (!vpnUpForTimeZone)
         {
-            return settings.HomeTimeZoneId;
+            return settings.Active.HomeTimeZoneId;
         }
 
         if (state.HomeTimeHold && input.ClaudeProcessCount == 0)
         {
-            return settings.HomeTimeZoneId;
+            return settings.Active.HomeTimeZoneId;
         }
 
-        return settings.RequiredTimeZoneId;
+        return settings.Active.RequiredTimeZoneId;
     }
 
     public static GuardDecision Evaluate(GuardInput input, GuardSettings settings, GuardState state)
@@ -127,8 +138,8 @@ public static class GuardEngine
         state.VpnMisses = input.VpnConnected ? 0 : state.VpnMisses + 1;
 
         var paused = state.PausedUntil is { } until && input.Now < until;
-        var enforcing = settings.EnforceVpn || settings.EnforceTimeZone;
-        var timeZoneEnforced = settings.EnforceTimeZone && !state.TimeZoneSuspended && !paused;
+        var enforcing = settings.EnforceVpn || settings.Active.EnforceTimeZone;
+        var timeZoneEnforced = settings.Active.EnforceTimeZone && !state.TimeZoneSuspended && !paused;
         var vpnEnforced = settings.EnforceVpn && !paused;
 
         // A blip must not flip the system clock, but it does block Claude at once.
@@ -156,7 +167,7 @@ public static class GuardEngine
         else if (timeZoneEnforced
                  && input.VpnConnected
                  && input.ClaudeProcessCount > 0
-                 && !string.Equals(input.CurrentTimeZoneId, settings.RequiredTimeZoneId, StringComparison.OrdinalIgnoreCase))
+                 && !string.Equals(input.CurrentTimeZoneId, settings.Active.RequiredTimeZoneId, StringComparison.OrdinalIgnoreCase))
         {
             stop = true;
             reasonKey = "Reason_TimeZone";
@@ -208,10 +219,25 @@ public static class GuardEngine
 
         var safe = (!vpnEnforced || input.VpnConnected)
                    && (!timeZoneEnforced
-                       || string.Equals(input.CurrentTimeZoneId, settings.RequiredTimeZoneId, StringComparison.OrdinalIgnoreCase));
+                       || string.Equals(input.CurrentTimeZoneId, settings.Active.RequiredTimeZoneId, StringComparison.OrdinalIgnoreCase));
 
         GuardPhase phase;
         string headline;
+
+        if (!input.Licensed)
+        {
+            // Nothing is enforced, and nothing is reported as protected either.
+            // Saying "Ready" here would be a lie that costs someone their account.
+            return new GuardDecision
+            {
+                Phase = GuardPhase.Locked,
+                HeadlineKey = "Head_Locked",
+                TargetTimeZoneId = input.CurrentTimeZoneId,
+                TimeZoneSynced = true,
+                SafeToOpenClaude = true,
+                VpnConsideredDown = !input.VpnConnected
+            };
+        }
 
         if (!enforcing)
         {
@@ -236,7 +262,7 @@ public static class GuardEngine
             headline = "Head_Standby";
         }
         else if (timeZoneEnforced
-                 && !string.Equals(input.CurrentTimeZoneId, settings.RequiredTimeZoneId, StringComparison.OrdinalIgnoreCase))
+                 && !string.Equals(input.CurrentTimeZoneId, settings.Active.RequiredTimeZoneId, StringComparison.OrdinalIgnoreCase))
         {
             phase = GuardPhase.Mismatch;
             headline = "Head_Mismatch";

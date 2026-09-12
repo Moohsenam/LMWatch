@@ -18,6 +18,7 @@ public partial class App : Application
     private TrayIcon? _tray;
     private MainWindow? _window;
     private GraceOverlay? _overlay;
+    private System.Windows.Threading.DispatcherTimer? _licenceTimer;
 
     public static MainViewModel? Model { get; private set; }
 
@@ -54,16 +55,18 @@ public partial class App : Application
         {
             WriteCrash(args.Exception);
             MessageBox.Show(
-                "Claude Watch hit an unexpected error and kept running.\n\n" + args.Exception.Message,
-                "Claude Watch", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "SafeChat hit an unexpected error and kept running.\n\n" + args.Exception.Message,
+                "SafeChat", MessageBoxButton.OK, MessageBoxImage.Warning);
             args.Handled = true;
         };
 
         _viewModel = new MainViewModel();
         Model = _viewModel;
 
-        ApplyTheme(_viewModel.Live.Theme, _viewModel.Live.AccentColor);
-        _viewModel.ThemeChanged += (_, _) => ApplyTheme(_viewModel.Live.Theme, _viewModel.Live.AccentColor);
+        // The accent follows the selected service, so switching repaints the window.
+        ApplyTheme(_viewModel.Live.Theme, _viewModel.EffectiveAccent);
+        _viewModel.ThemeChanged += (_, _) => ApplyTheme(_viewModel.Live.Theme, _viewModel.EffectiveAccent);
+        _viewModel.RefreshServiceTabs();
 
         _tray = new TrayIcon(_viewModel);
         _tray.OpenRequested += (_, _) => ShowWindow();
@@ -76,16 +79,25 @@ public partial class App : Application
         var startHidden = e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
                           || _viewModel.Live.StartMinimized;
 
-        if (!startHidden)
+        // The wizard comes first on a fresh install, and its answers decide what
+        // the automatic setup then goes looking for.
+        if (_viewModel.NeedsSetup && !startHidden)
         {
-            _window.Show();
+            RunWizard();
+        }
+        else
+        {
+            if (!startHidden)
+            {
+                _window.Show();
+            }
+
+            _ = _viewModel.RunAutoSetupAsync();
         }
 
         _viewModel.Start();
-
-        // Find Claude and register the privileged pieces without being asked.
-        // It runs after the window is up so nothing blocks the first paint.
-        _ = _viewModel.RunAutoSetupAsync();
+        _ = _viewModel.StartLicenceAsync();
+        StartLicenceWatch();
     }
 
     /// <summary>
@@ -118,6 +130,46 @@ public partial class App : Application
             _overlay = null;
             WriteCrash(error);
         }
+    }
+
+    /// <summary>
+    /// The first-run questions. If anything about it fails, the app carries on
+    /// without it rather than leaving someone with a window they cannot open.
+    /// </summary>
+    private void RunWizard()
+    {
+        if (_viewModel is null || _window is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var wizard = new SetupWizard(_viewModel);
+            wizard.ShowDialog();
+        }
+        catch (Exception error)
+        {
+            WriteCrash(error);
+            _viewModel.CompleteSetup();
+        }
+
+        _window.Show();
+    }
+
+    /// <summary>
+    /// Re-confirms the key with the server every six hours. Nothing happens on
+    /// a failure: an unreachable server must never switch protection off.
+    /// </summary>
+    private void StartLicenceWatch()
+    {
+        _licenceTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromHours(6)
+        };
+
+        _licenceTimer.Tick += (_, _) => _ = _viewModel?.RecheckLicenceAsync();
+        _licenceTimer.Start();
     }
 
     private void StartShowListener()
@@ -177,6 +229,7 @@ public partial class App : Application
         {
         }
 
+        _licenceTimer?.Stop();
         _viewModel?.Shutdown();
         _tray?.Dispose();
         Shutdown();
@@ -195,7 +248,7 @@ public partial class App : Application
         var candidates = new[]
         {
             new Uri($"Theme/{resolved}.xaml", UriKind.Relative),
-            new Uri($"pack://application:,,,/ClaudeWatch;component/Theme/{resolved}.xaml", UriKind.Absolute)
+            new Uri($"pack://application:,,,/SafeChat;component/Theme/{resolved}.xaml", UriKind.Absolute)
         };
 
         foreach (var candidate in candidates)

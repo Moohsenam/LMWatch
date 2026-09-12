@@ -64,9 +64,16 @@ public sealed class GuardService : IDisposable
     private IpInfo? _ip;
     private DateTimeOffset _lastIpCheck = DateTimeOffset.MinValue;
     private int _ipBusy;
-    private bool? _firewallState;
-    private bool _firewallReady;
+    // Per service, keyed by profile key: each has its own rule to keep in step.
+    private readonly Dictionary<string, bool?> _firewallState = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _firewallReady = new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset _lastFirewallCheck = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// Set by the app from the licence it loaded. False stops the guard doing
+    /// anything at all, without stopping the window from working.
+    /// </summary>
+    public bool Licensed { get; set; } = true;
     private System.Threading.Timer? _graceTimer;
     private bool _graceAnnounced;
 
@@ -251,7 +258,8 @@ public sealed class GuardService : IDisposable
                 VpnDetail = vpn.Detail,
                 ClaudeProcessCount = processes.Count,
                 CurrentTimeZoneId = currentTz,
-                Now = DateTimeOffset.Now
+                Now = DateTimeOffset.Now,
+                Licensed = Licensed
             };
 
             if (_state.PausedUntil is { } until && input.Now >= until)
@@ -266,7 +274,7 @@ public sealed class GuardService : IDisposable
             if (decision.ShouldStopClaude)
             {
                 var reason = decision.StopReasonKey == "Reason_TimeZone"
-                    ? $"The time zone is {Friendly(decision.StopReasonDetail)}, not {Friendly(_settings.RequiredTimeZoneId)}."
+                    ? $"The time zone is {Friendly(decision.StopReasonDetail)}, not {Friendly(_settings.Active.RequiredTimeZoneId)}."
                     : "The VPN is not connected.";
 
                 var result = _processes.StopAll(_settings);
@@ -283,7 +291,8 @@ public sealed class GuardService : IDisposable
                         VpnDetail = vpn.Detail,
                         ClaudeProcessCount = processes.Count,
                         CurrentTimeZoneId = currentTz,
-                        Now = input.Now
+                        Now = input.Now,
+                        Licensed = Licensed
                     };
                     decision = GuardEngine.Evaluate(input, _settings, _state);
                 }
@@ -310,7 +319,8 @@ public sealed class GuardService : IDisposable
                         VpnDetail = vpn.Detail,
                         ClaudeProcessCount = processes.Count,
                         CurrentTimeZoneId = currentTz,
-                        Now = input.Now
+                        Now = input.Now,
+                        Licensed = Licensed
                     };
                     decision = GuardEngine.Evaluate(input, _settings, _state);
                 }
@@ -345,8 +355,8 @@ public sealed class GuardService : IDisposable
                 StoppedThisTick = stoppedNow,
                 Ip = _ip,
                 IpLeak = leak,
-                FirewallBlocking = _firewallState,
-                FirewallReady = _firewallReady,
+                FirewallBlocking = _firewallState.TryGetValue(_settings.Active.Key, out var blocking) ? blocking : null,
+                FirewallReady = _firewallReady.TryGetValue(_settings.Active.Key, out var ready) && ready,
                 InGrace = decision.InGrace,
                 GraceEndsAt = decision.GraceEndsAt,
                 GraceReasonKey = decision.GraceReasonKey
@@ -451,44 +461,55 @@ public sealed class GuardService : IDisposable
     /// </summary>
     private void ApplyKillSwitch(bool safe)
     {
-        if (DateTimeOffset.Now - _lastFirewallCheck > TimeSpan.FromSeconds(20))
+        var recheck = DateTimeOffset.Now - _lastFirewallCheck > TimeSpan.FromSeconds(20);
+        if (recheck)
         {
             _lastFirewallCheck = DateTimeOffset.Now;
-            _firewallReady = FirewallController.IsReady();
         }
 
-        if (!_settings.EnableFirewallKillSwitch)
+        foreach (var profile in _settings.Watched)
         {
-            // Switched off while a block was in place: lift it once and forget it.
-            if (_firewallState == true && FirewallController.Set(false, allowPrompt: false))
+            if (recheck)
             {
-                _firewallState = false;
-                _log.Add(ActivityKind.Info, "Firewall block lifted", "The kill switch was switched off.");
+                _firewallReady[profile.Key] = FirewallController.IsReady(profile);
             }
 
-            return;
+            var current = _firewallState.TryGetValue(profile.Key, out var known) ? known : null;
+
+            if (!profile.EnableFirewallKillSwitch)
+            {
+                // Switched off while a block was in place: lift it and forget it.
+                if (current == true && FirewallController.Set(profile, false, allowPrompt: false))
+                {
+                    _firewallState[profile.Key] = false;
+                    _log.Add(ActivityKind.Info, $"{profile.Name}: firewall block lifted",
+                        "The kill switch was switched off.");
+                }
+
+                continue;
+            }
+
+            var shouldBlock = !safe;
+            if (current == shouldBlock)
+            {
+                continue;
+            }
+
+            if (!FirewallController.Set(profile, shouldBlock, allowPrompt: false))
+            {
+                _log.Add(ActivityKind.Warning, $"{profile.Name}: firewall rule did not change",
+                    "Set the kill switch up again in Settings.");
+                continue;
+            }
+
+            _firewallState[profile.Key] = shouldBlock;
+
+            var entry = shouldBlock
+                ? _log.Add(ActivityKind.Alert, $"{profile.Name}'s traffic is blocked", "The firewall rule is on.")
+                : _log.Add(ActivityKind.Good, $"{profile.Name}'s traffic is allowed again", "The firewall rule is off.");
+
+            Notified?.Invoke(this, entry);
         }
-
-        var shouldBlock = !safe;
-        if (_firewallState == shouldBlock)
-        {
-            return;
-        }
-
-        if (!FirewallController.Set(shouldBlock, allowPrompt: false))
-        {
-            _log.Add(ActivityKind.Warning, "Firewall rule did not change",
-                "Set the kill switch up again in Settings.");
-            return;
-        }
-
-        _firewallState = shouldBlock;
-
-        var entry = shouldBlock
-            ? _log.Add(ActivityKind.Alert, "Claude's traffic is blocked", "The firewall rule is on.")
-            : _log.Add(ActivityKind.Good, "Claude's traffic is allowed again", "The firewall rule is off.");
-
-        Notified?.Invoke(this, entry);
     }
 
     /// <summary>

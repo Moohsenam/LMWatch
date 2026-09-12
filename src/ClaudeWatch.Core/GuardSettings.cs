@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace ClaudeWatch.Core;
@@ -41,7 +42,6 @@ public sealed class GuardSettings
 
     // ---- protection ---------------------------------------------------
     public bool EnforceVpn { get; set; } = true;
-    public bool EnforceTimeZone { get; set; } = true;
     public EnforcementAction Action { get; set; } = EnforcementAction.StopClaude;
 
     /// <summary>
@@ -63,9 +63,52 @@ public sealed class GuardSettings
     /// <summary>Show the full-screen countdown while that window is open.</summary>
     public bool ShowGraceOverlay { get; set; } = true;
 
+    // ---- services -------------------------------------------------------
+
+    /// <summary>Claude and ChatGPT, each with its own rules.</summary>
+    public List<ServiceProfile> Services { get; set; } = new();
+
+    /// <summary>Which one the window is showing and whose clock rule applies.</summary>
+    public string ActiveServiceKey { get; set; } = ServiceProfile.ClaudeKey;
+
+    [JsonIgnore]
+    public ServiceProfile Active
+    {
+        get
+        {
+            EnsureServices();
+            return Services.FirstOrDefault(s =>
+                       string.Equals(s.Key, ActiveServiceKey, StringComparison.OrdinalIgnoreCase))
+                   ?? Services[0];
+        }
+    }
+
+    [JsonIgnore]
+    public IEnumerable<ServiceProfile> Watched
+    {
+        get
+        {
+            EnsureServices();
+            return Services.Where(s => s.Enabled);
+        }
+    }
+
+    public ServiceProfile? ByKey(string? key)
+    {
+        EnsureServices();
+        return Services.FirstOrDefault(s => string.Equals(s.Key, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>A settings file with no services yet is still usable.</summary>
+    public void EnsureServices()
+    {
+        if (Services.Count == 0)
+        {
+            Services = ServiceProfile.Defaults();
+        }
+    }
+
     // ---- time zones ---------------------------------------------------
-    public string RequiredTimeZoneId { get; set; } = "Eastern Standard Time";
-    public string HomeTimeZoneId { get; set; } = "Iran Standard Time";
     public TimeZoneMode TimeZoneMode { get; set; } = TimeZoneMode.Automatic;
 
     /// <summary>Use the elevated scheduled tasks so switching stops asking for UAC.</summary>
@@ -73,19 +116,12 @@ public sealed class GuardSettings
 
     // ---- detection ----------------------------------------------------
     public string VpnAdapterPattern { get; set; } = DefaultVpnPattern;
-    public string ProcessNamePattern { get; set; } = DefaultProcessPattern;
 
     /// <summary>Adapters the user marked by hand as "this one is my VPN".</summary>
     public List<string> TrustedAdapters { get; set; } = new();
 
     /// <summary>Adapters that look like a VPN but must be ignored.</summary>
     public List<string> IgnoredAdapters { get; set; } = new();
-
-    /// <summary>Extra process names to treat as Claude (exact, without .exe).</summary>
-    public List<string> ExtraProcessNames { get; set; } = new();
-
-    /// <summary>Process names that must never be stopped.</summary>
-    public List<string> ExcludedProcessNames { get; set; } = new();
 
     /// <summary>Count tunnel/PPP adapters as a VPN even when the name does not match.</summary>
     public bool TrustTunnelAdapters { get; set; } = true;
@@ -98,13 +134,6 @@ public sealed class GuardSettings
     /// user marked as trusted is counted either way.
     /// </summary>
     public bool RequireDefaultRoute { get; set; } = true;
-
-    // ---- kill switch ---------------------------------------------------
-    /// <summary>Block Claude's traffic at the firewall while a rule is broken.</summary>
-    public bool EnableFirewallKillSwitch { get; set; }
-
-    /// <summary>Which executable the firewall rule was built for, so a move is noticed.</summary>
-    public string FirewallRulePath { get; set; } = string.Empty;
 
     // ---- address watch --------------------------------------------------
     public bool ShowIpPanel { get; set; } = true;
@@ -131,7 +160,6 @@ public sealed class GuardSettings
     public bool NotifyOnlyOnProblems { get; set; }
     public bool PlaySound { get; set; }
     public bool ConfirmBeforeStopping { get; set; }
-    public string ClaudeExecutablePath { get; set; } = string.Empty;
     public bool EnableKillHotkey { get; set; }
 
     // ---- appearance ---------------------------------------------------
@@ -139,9 +167,16 @@ public sealed class GuardSettings
     public string AccentColor { get; set; } = "#D97757";
     public string Language { get; set; } = "en";
 
+    // ---- licence --------------------------------------------------------
+    /// <summary>The key the customer activated, as they typed it.</summary>
+    public string LicenceKey { get; set; } = string.Empty;
+
     // ---- housekeeping -------------------------------------------------
     public int LogRetentionDays { get; set; } = 30;
     public bool FirstRunCompleted { get; set; }
+
+    /// <summary>The first-run questions have been answered.</summary>
+    public bool SetupCompleted { get; set; }
 
     [JsonIgnore]
     public TimeSpan Refresh => TimeSpan.FromSeconds(Math.Clamp(RefreshSeconds, 0.5, 60));
@@ -151,26 +186,20 @@ public sealed class GuardSettings
         return new GuardSettings
         {
             EnforceVpn = EnforceVpn,
-            EnforceTimeZone = EnforceTimeZone,
             Action = Action,
             VpnMissTolerance = VpnMissTolerance,
             RefreshSeconds = RefreshSeconds,
             GraceSeconds = GraceSeconds,
             ShowGraceOverlay = ShowGraceOverlay,
-            RequiredTimeZoneId = RequiredTimeZoneId,
-            HomeTimeZoneId = HomeTimeZoneId,
+            Services = Services.Select(s => s.Clone()).ToList(),
+            ActiveServiceKey = ActiveServiceKey,
             TimeZoneMode = TimeZoneMode,
             UsePrivilegedHelper = UsePrivilegedHelper,
             VpnAdapterPattern = VpnAdapterPattern,
-            ProcessNamePattern = ProcessNamePattern,
             TrustedAdapters = new List<string>(TrustedAdapters),
             IgnoredAdapters = new List<string>(IgnoredAdapters),
-            ExtraProcessNames = new List<string>(ExtraProcessNames),
-            ExcludedProcessNames = new List<string>(ExcludedProcessNames),
             TrustTunnelAdapters = TrustTunnelAdapters,
             RequireDefaultRoute = RequireDefaultRoute,
-            EnableFirewallKillSwitch = EnableFirewallKillSwitch,
-            FirewallRulePath = FirewallRulePath,
             ShowIpPanel = ShowIpPanel,
             IpRefreshSeconds = IpRefreshSeconds,
             KnownHomeIp = KnownHomeIp,
@@ -185,13 +214,14 @@ public sealed class GuardSettings
             NotifyOnlyOnProblems = NotifyOnlyOnProblems,
             PlaySound = PlaySound,
             ConfirmBeforeStopping = ConfirmBeforeStopping,
-            ClaudeExecutablePath = ClaudeExecutablePath,
             EnableKillHotkey = EnableKillHotkey,
             Theme = Theme,
             AccentColor = AccentColor,
             Language = Language,
+            LicenceKey = LicenceKey,
             LogRetentionDays = LogRetentionDays,
-            FirstRunCompleted = FirstRunCompleted
+            FirstRunCompleted = FirstRunCompleted,
+            SetupCompleted = SetupCompleted
         };
     }
 }

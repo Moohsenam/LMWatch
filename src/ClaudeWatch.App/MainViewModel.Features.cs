@@ -152,7 +152,7 @@ public sealed partial class MainViewModel
                 return L["Setup_Ready"];
             }
 
-            return PrivilegedHelper.IsInstalled() || FirewallController.IsReady()
+            return PrivilegedHelper.IsInstalled() || FirewallController.IsReady(_settings.Active)
                 ? L["Setup_Partial"]
                 : L["Setup_Missing"];
         }
@@ -169,28 +169,43 @@ public sealed partial class MainViewModel
     /// </summary>
     public async Task RunAutoSetupAsync(bool force = false)
     {
-        // ---- 1. where is Claude
-        var current = _settings.ClaudeExecutablePath;
-
-        if (force || string.IsNullOrWhiteSpace(current) || !File.Exists(current))
+        // ---- 1. where each watched app lives
+        foreach (var profile in _settings.Watched.ToList())
         {
-            var found = await Task.Run(() => ClaudeFinder.Find()).ConfigureAwait(true);
+            var current = profile.ExecutablePath;
+
+            if (!force && !string.IsNullOrWhiteSpace(current) && File.Exists(current))
+            {
+                continue;
+            }
+
+            var key = profile.Key;
+            var found = await Task.Run(() => ClaudeFinder.Find(key)).ConfigureAwait(true);
 
             if (found.Found)
             {
-                _settings.ClaudeExecutablePath = found.Path;
-                Edit.ClaudeExecutablePath = found.Path;
-                ClaudeFoundVia = found.Source;
-                _log.Add(ActivityKind.Good, L["Claude_Found"], $"{found.Path} ({found.Source})");
+                profile.ExecutablePath = found.Path;
+
+                if (Edit.ByKey(key) is { } mirror)
+                {
+                    mirror.ExecutablePath = found.Path;
+                }
+
+                if (string.Equals(key, _settings.ActiveServiceKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    ClaudeFoundVia = found.Source;
+                }
+
+                _log.Add(ActivityKind.Good, $"{profile.Name} found", $"{found.Path} ({found.Source})");
             }
             else if (!_settings.FirstRunCompleted)
             {
-                _log.Add(ActivityKind.Warning, L["Claude_Missing"]);
+                _log.Add(ActivityKind.Warning, $"{profile.Name} was not found");
             }
-
-            Raise(nameof(ClaudePathDisplay));
-            Raise(nameof(ClaudeFoundVia));
         }
+
+        Raise(nameof(ClaudePathDisplay));
+        Raise(nameof(ClaudeFoundVia));
 
         // ---- 2. language, on the very first run only
         if (!_settings.FirstRunCompleted &&
@@ -205,19 +220,26 @@ public sealed partial class MainViewModel
         }
 
         // ---- 3. the parts that need administrator rights
-        var path = _settings.ClaudeExecutablePath;
         var tasksReady = PrivilegedHelper.IsInstalled();
-        var firewallReady = FirewallController.IsReady();
-        var ruleMatchesClaude = string.Equals(_settings.FirewallRulePath, path, StringComparison.OrdinalIgnoreCase);
-        var hasClaude = !string.IsNullOrWhiteSpace(path) && File.Exists(path);
 
-        var complete = tasksReady && (!hasClaude || (firewallReady && ruleMatchesClaude));
+        var located = _settings.Watched
+            .Where(p => !string.IsNullOrWhiteSpace(p.ExecutablePath) && File.Exists(p.ExecutablePath))
+            .ToList();
+
+        var hasClaude = located.Count > 0;
+
+        // Every located app needs its own rule, pointing at its own executable.
+        var rulesReady = located.All(p =>
+            FirewallController.IsReady(p) &&
+            string.Equals(p.FirewallRulePath, p.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+
+        var complete = tasksReady && (!hasClaude || rulesReady);
 
         // Ask once. After that only a moved Claude, or the button in Settings,
         // brings the prompt back.
         var shouldRun = force
                         || (!complete && !_settings.FirstRunCompleted)
-                        || (!complete && _settings.UsePrivilegedHelper && hasClaude && !ruleMatchesClaude);
+                        || (!complete && _settings.UsePrivilegedHelper && hasClaude && !rulesReady);
 
         if (!shouldRun)
         {
@@ -227,7 +249,7 @@ public sealed partial class MainViewModel
         }
 
         var (ok, message) = await Task
-            .Run(() => PrivilegedHelper.InstallEverything(_settings, hasClaude ? path : string.Empty))
+            .Run(() => PrivilegedHelper.InstallEverything(_settings))
             .ConfigureAwait(true);
 
         if (ok)
@@ -235,15 +257,20 @@ public sealed partial class MainViewModel
             _settings.UsePrivilegedHelper = true;
             Edit.UsePrivilegedHelper = true;
 
-            if (hasClaude)
+            foreach (var profile in located)
             {
-                _settings.EnableFirewallKillSwitch = true;
-                Edit.EnableFirewallKillSwitch = true;
-                _settings.FirewallRulePath = path;
-                Edit.FirewallRulePath = path;
+                profile.EnableFirewallKillSwitch = true;
+                profile.FirewallRulePath = profile.ExecutablePath;
+
+                if (Edit.ByKey(profile.Key) is { } mirror)
+                {
+                    mirror.EnableFirewallKillSwitch = true;
+                    mirror.FirewallRulePath = profile.ExecutablePath;
+                }
             }
 
-            SetupComplete = PrivilegedHelper.IsInstalled() && (!hasClaude || FirewallController.IsReady());
+            SetupComplete = PrivilegedHelper.IsInstalled()
+                            && (!hasClaude || located.All(FirewallController.IsReady));
             _log.Add(ActivityKind.Good, "Setup finished",
                 string.IsNullOrWhiteSpace(message) ? "No more approval prompts." : message);
         }
@@ -277,8 +304,8 @@ public sealed partial class MainViewModel
     /// <summary>Picks up Claude's path from a process that is running right now.</summary>
     private void LearnClaudePathFromProcesses()
     {
-        if (!string.IsNullOrWhiteSpace(_settings.ClaudeExecutablePath) &&
-            File.Exists(_settings.ClaudeExecutablePath))
+        if (!string.IsNullOrWhiteSpace(_settings.Active.ExecutablePath) &&
+            File.Exists(_settings.Active.ExecutablePath))
         {
             return;
         }
@@ -289,8 +316,8 @@ public sealed partial class MainViewModel
             return;
         }
 
-        _settings.ClaudeExecutablePath = running.Path;
-        Edit.ClaudeExecutablePath = running.Path;
+        _settings.Active.ExecutablePath = running.Path;
+        Edit.Active.ExecutablePath = running.Path;
         ClaudeFoundVia = "running process";
         _log.Add(ActivityKind.Good, L["Claude_Found"], running.Path);
         Raise(nameof(ClaudePathDisplay));
@@ -305,7 +332,7 @@ public sealed partial class MainViewModel
     {
         get
         {
-            if (!_settings.EnableFirewallKillSwitch)
+            if (!_settings.Active.EnableFirewallKillSwitch)
             {
                 return L["Set_Firewall_Off"];
             }
@@ -326,7 +353,7 @@ public sealed partial class MainViewModel
         _ => Palette("TextDim")
     };
 
-    public bool ShowFirewallChip => _settings.EnableFirewallKillSwitch;
+    public bool ShowFirewallChip => _settings.Active.EnableFirewallKillSwitch;
 
     // ================================================================= usage
 
@@ -440,6 +467,9 @@ public sealed partial class MainViewModel
     public RelayCommand RemoveFirewallCommand { get; private set; } = null!;
     public RelayCommand LoadUsageCommand { get; private set; } = null!;
     public RelayCommand LoadPricesCommand { get; private set; } = null!;
+    public RelayCommand SwitchServiceCommand { get; private set; } = null!;
+    public RelayCommand ActivateCommand { get; private set; } = null!;
+    public RelayCommand FindAppsCommand { get; private set; } = null!;
     public RelayCommand BuyPlanCommand { get; private set; } = null!;
     public RelayCommand PlaceOrderCommand { get; private set; } = null!;
     public RelayCommand NewOrderCommand { get; private set; } = null!;
@@ -483,9 +513,9 @@ public sealed partial class MainViewModel
 
         InstallFirewallCommand = new RelayCommand(() =>
         {
-            var path = string.IsNullOrWhiteSpace(_settings.ClaudeExecutablePath)
+            var path = string.IsNullOrWhiteSpace(_settings.Active.ExecutablePath)
                 ? ClaudeLauncher.Detect()
-                : _settings.ClaudeExecutablePath;
+                : _settings.Active.ExecutablePath;
 
             if (string.IsNullOrWhiteSpace(path))
             {
@@ -493,12 +523,12 @@ public sealed partial class MainViewModel
                 return;
             }
 
-            var (ok, message) = FirewallController.Install(path);
+            var (ok, message) = FirewallController.Install(_settings.Active, path);
 
             if (ok)
             {
-                Edit.EnableFirewallKillSwitch = true;
-                _settings.EnableFirewallKillSwitch = true;
+                Edit.Active.EnableFirewallKillSwitch = true;
+                _settings.Active.EnableFirewallKillSwitch = true;
                 _log.Add(ActivityKind.Good, "Firewall kill switch set up", "Switching needs no more approval.");
                 Persist();
             }
@@ -513,9 +543,9 @@ public sealed partial class MainViewModel
 
         RemoveFirewallCommand = new RelayCommand(() =>
         {
-            FirewallController.Uninstall();
-            Edit.EnableFirewallKillSwitch = false;
-            _settings.EnableFirewallKillSwitch = false;
+            FirewallController.Uninstall(_settings.Active);
+            Edit.Active.EnableFirewallKillSwitch = false;
+            _settings.Active.EnableFirewallKillSwitch = false;
             _log.Add(ActivityKind.Info, "Firewall kill switch removed");
             Persist();
             RaiseAllSettings();
@@ -525,6 +555,14 @@ public sealed partial class MainViewModel
         LoadUsageCommand = new RelayCommand(() => _ = LoadUsageAsync());
 
         LoadPricesCommand = new RelayCommand(() => _ = LoadPricesAsync());
+
+        SwitchServiceCommand = new RelayCommand(p => SwitchService(p as string));
+
+        ActivateCommand = new RelayCommand(() => _ = ActivateAsync());
+
+        // Looks for every watched app again, for when one was installed or moved
+        // after SafeChat was.
+        FindAppsCommand = new RelayCommand(() => _ = RunAutoSetupAsync(force: true));
 
         BuyPlanCommand = new RelayCommand(p =>
         {

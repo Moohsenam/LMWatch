@@ -151,7 +151,7 @@ public sealed class PricingConfig
 
 public sealed class ServiceConfig
 {
-    public string BusinessName { get; set; } = "Claude Watch";
+    public string BusinessName { get; set; } = "SafeChat";
     public string ContactLine { get; set; } = string.Empty;
     public string ContactUrl { get; set; } = string.Empty;
 
@@ -175,7 +175,7 @@ public sealed class ServiceConfig
 
     public static ServiceConfig CreateDefault() => new()
     {
-        BusinessName = "Claude Watch",
+        BusinessName = "SafeChat",
         ContactLine = string.Empty,
         ContactUrl = string.Empty,
         Notice = string.Empty,

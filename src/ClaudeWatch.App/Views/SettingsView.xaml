@@ -51,6 +51,37 @@
                     </Grid>
                 </Border>
 
+                <!-- ====================== services ====================== -->
+                <TextBlock Text="{Binding L[Svc_Switch]}" Style="{StaticResource Caption}" Margin="2,0,0,8" />
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding L[Svc_Both]}" Style="{StaticResource Caption}" />
+
+                        <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
+
+                        <CheckBox Style="{StaticResource Switch}" Content="Claude"
+                                  IsChecked="{Binding ClaudeEnabled, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding ClaudePath}" Style="{StaticResource Caption}"
+                                   Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+
+                        <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
+
+                        <CheckBox Style="{StaticResource Switch}" Content="ChatGPT"
+                                  IsChecked="{Binding ChatGptEnabled, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding ChatGptPath}" Style="{StaticResource Caption}"
+                                   Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+
+                        <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
+
+                        <TextBlock Text="{Binding L[Set_Zones]}" Style="{StaticResource Body}" />
+                        <TextBlock Text="{Binding L[Svc_Enabled]}" Style="{StaticResource Caption}"
+                                   Margin="0,3,0,0" />
+                        <Button Content="{Binding L[Btn_Refresh]}" Style="{StaticResource SecondaryButton}"
+                                Command="{Binding FindAppsCommand}" HorizontalAlignment="Left"
+                                Margin="0,10,0,0" />
+                    </StackPanel>
+                </Border>
+
                 <!-- ===================== protection ===================== -->
                 <TextBlock Text="{Binding L[Set_Protection]}" Style="{StaticResource Caption}" Margin="2,0,0,8" />
                 <Border Style="{StaticResource Card}">
@@ -82,7 +113,7 @@
                                            Margin="0,3,0,0" />
                             </StackPanel>
                             <CheckBox Grid.Column="1" Style="{StaticResource Switch}"
-                                      IsChecked="{Binding Edit.EnforceTimeZone, Mode=TwoWay}" />
+                                      IsChecked="{Binding Edit.Active.EnforceTimeZone, Mode=TwoWay}" />
                         </Grid>
 
                         <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
@@ -186,7 +217,7 @@
                             <ComboBox Grid.Column="1" Style="{StaticResource Picker}"
                                       ItemsSource="{Binding TimeZones}" DisplayMemberPath="Display"
                                       SelectedValuePath="Id"
-                                      SelectedValue="{Binding Edit.RequiredTimeZoneId, Mode=TwoWay}" />
+                                      SelectedValue="{Binding Edit.Active.RequiredTimeZoneId, Mode=TwoWay}" />
                         </Grid>
 
                         <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
@@ -201,7 +232,7 @@
                             <ComboBox Grid.Column="1" Style="{StaticResource Picker}"
                                       ItemsSource="{Binding TimeZones}" DisplayMemberPath="Display"
                                       SelectedValuePath="Id"
-                                      SelectedValue="{Binding Edit.HomeTimeZoneId, Mode=TwoWay}" />
+                                      SelectedValue="{Binding Edit.Active.HomeTimeZoneId, Mode=TwoWay}" />
                         </Grid>
 
                         <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
@@ -272,7 +303,7 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" VerticalAlignment="Top">
                                 <CheckBox Style="{StaticResource Switch}"
-                                          IsChecked="{Binding Edit.EnableFirewallKillSwitch, Mode=TwoWay}" />
+                                          IsChecked="{Binding Edit.Active.EnableFirewallKillSwitch, Mode=TwoWay}" />
                                 <Button Content="{Binding L[Btn_Remove]}" Style="{StaticResource GhostButton}"
                                         Command="{Binding RemoveFirewallCommand}" Margin="0,8,0,0"
                                         Visibility="{Binding FirewallReady, Converter={StaticResource BoolVis}}" />
@@ -354,7 +385,7 @@
 
                         <TextBlock Text="{Binding L[Set_ProcPattern]}" Style="{StaticResource Body}" Margin="0,16,0,0" />
                         <TextBox Style="{StaticResource Field}" Margin="0,6,0,0"
-                                 Text="{Binding Edit.ProcessNamePattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                 Text="{Binding Edit.Active.ProcessNamePattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <Grid Margin="0,16,0,0">
                             <Grid.ColumnDefinitions>

@@ -128,6 +128,9 @@ namespace System.Windows
         public void Close() { Closed?.Invoke(this, EventArgs.Empty); OnClosed(EventArgs.Empty); }
         public bool Activate() => true;
         public void DragMove() { }
+        public bool? DialogResult { get; set; }
+        public bool? ShowDialog() => true;
+        public System.Windows.Window? Owner { get; set; }
         protected virtual void OnClosing(CancelEventArgs e) { }
         protected virtual void OnClosed(EventArgs e) { }
         public void InitializeComponent() { }
@@ -196,6 +199,24 @@ namespace System.Windows.Controls
     }
 
     public class Button : System.Windows.ContentControl { }
+
+    public class StackPanel : System.Windows.FrameworkElement { }
+
+    public class CheckBox : System.Windows.ContentControl
+    {
+        public bool? IsChecked { get; set; }
+    }
+
+    public class ComboBox : System.Windows.Control
+    {
+        public int SelectedIndex { get; set; }
+        public object? SelectedValue { get; set; }
+    }
+
+    public class TextBox : System.Windows.Control
+    {
+        public string Text { get; set; } = string.Empty;
+    }
 
     public class UserControl : System.Windows.Control
     {

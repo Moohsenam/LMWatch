@@ -52,7 +52,7 @@ if [ -z "${PASSWORD:-}" ]; then
 fi
 
 echo
-echo "Claude Watch orders — API checks"
+echo "SafeChat orders — API checks"
 echo "------------------------------------------------"
 
 check "health responds" 200 "$(status "$BASE/api/health")"

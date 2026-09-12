@@ -9,14 +9,14 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>ClaudeWatch.App</RootNamespace>
-    <AssemblyName>ClaudeWatch</AssemblyName>
+    <AssemblyName>SafeChat</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>1.0.0</Version>
-    <AssemblyTitle>Claude Watch</AssemblyTitle>
-    <Product>Claude Watch</Product>
-    <Company>Claude Watch</Company>
-    <Description>VPN and time-zone guard for the Claude desktop app.</Description>
+    <AssemblyTitle>SafeChat</AssemblyTitle>
+    <Product>SafeChat</Product>
+    <Company>SafeChat</Company>
+    <Description>VPN and time-zone guard for the Claude and ChatGPT desktop apps.</Description>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- WFAC010 is a WinForms check. WPF declares DPI awareness in the manifest,

@@ -17,6 +17,7 @@ public enum AppPage
     Dashboard,
     Buy,
     Orders,
+    Licence,
     Usage,
     Processes,
     Network,
@@ -54,9 +55,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         _settings = _store.Load();
 
-        if (string.IsNullOrWhiteSpace(_settings.ClaudeExecutablePath))
+        if (string.IsNullOrWhiteSpace(_settings.Active.ExecutablePath))
         {
-            _settings.ClaudeExecutablePath = ClaudeLauncher.Detect();
+            _settings.Active.ExecutablePath = ClaudeLauncher.Detect();
         }
 
         L.Language = _settings.Language;
@@ -142,6 +143,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             Raise(nameof(IsDashboard));
             Raise(nameof(IsBuy));
             Raise(nameof(IsOrders));
+            Raise(nameof(IsLicence));
             Raise(nameof(IsUsage));
             Raise(nameof(IsProcesses));
             Raise(nameof(IsNetwork));
@@ -161,6 +163,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public bool IsDashboard => _page == AppPage.Dashboard;
     public bool IsBuy => _page == AppPage.Buy;
     public bool IsOrders => _page == AppPage.Orders;
+    public bool IsLicence => _page == AppPage.Licence;
     public bool IsUsage => _page == AppPage.Usage;
     public bool IsProcesses => _page == AppPage.Processes;
     public bool IsNetwork => _page == AppPage.Network;
@@ -209,7 +212,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 return Palette("TextDim");
             }
 
-            if (!_settings.EnforceTimeZone || _snapshot.TimeZoneSuspended)
+            if (!_settings.Active.EnforceTimeZone || _snapshot.TimeZoneSuspended)
             {
                 return Palette("TextDim");
             }
@@ -362,14 +365,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     public string ExtraNames
     {
-        get => string.Join(", ", Edit.ExtraProcessNames);
-        set { Edit.ExtraProcessNames = Split(value); Raise(nameof(ExtraNames)); }
+        get => string.Join(", ", Edit.Active.ExtraProcessNames);
+        set { Edit.Active.ExtraProcessNames = Split(value); Raise(nameof(ExtraNames)); }
     }
 
     public string ExcludedNames
     {
-        get => string.Join(", ", Edit.ExcludedProcessNames);
-        set { Edit.ExcludedProcessNames = Split(value); Raise(nameof(ExcludedNames)); }
+        get => string.Join(", ", Edit.Active.ExcludedProcessNames);
+        set { Edit.Active.ExcludedProcessNames = Split(value); Raise(nameof(ExcludedNames)); }
     }
 
     public bool HelperInstalled { get; private set; }
@@ -382,9 +385,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         private set { _savedFlash = value; Raise(nameof(SavedFlash)); }
     }
 
-    public string ClaudePathDisplay => string.IsNullOrWhiteSpace(Edit.ClaudeExecutablePath)
+    public string ClaudePathDisplay => string.IsNullOrWhiteSpace(Edit.Active.ExecutablePath)
         ? L["Set_ClaudePath_Missing"]
-        : Edit.ClaudeExecutablePath;
+        : Edit.Active.ExecutablePath;
 
     public string VersionText
     {
@@ -540,7 +543,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 return;
             }
 
-            Edit = new GuardSettings { ClaudeExecutablePath = ClaudeLauncher.Detect() };
+            Edit = new GuardSettings();
+            Edit.EnsureServices();
+            Edit.Active.ExecutablePath = ClaudeLauncher.Detect();
             SaveSettings();
             RaiseAllSettings();
         });
@@ -616,8 +621,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
             if (dialog.ShowDialog() == true)
             {
-                Edit.ClaudeExecutablePath = dialog.FileName;
-                _settings.ClaudeExecutablePath = dialog.FileName;
+                Edit.Active.ExecutablePath = dialog.FileName;
+                _settings.Active.ExecutablePath = dialog.FileName;
                 Persist();
                 Raise(nameof(ClaudePathDisplay));
             }
@@ -645,8 +650,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private void SaveSettings()
     {
         var oldLanguage = _settings.Language;
-        var zonesChanged = _settings.RequiredTimeZoneId != Edit.RequiredTimeZoneId
-                           || _settings.HomeTimeZoneId != Edit.HomeTimeZoneId;
+        var zonesChanged = _settings.Active.RequiredTimeZoneId != Edit.Active.RequiredTimeZoneId
+                           || _settings.Active.HomeTimeZoneId != Edit.Active.HomeTimeZoneId;
 
         _settings = SettingsStore.Sanitize(Edit.Clone());
         _store.Save(_settings);
@@ -805,8 +810,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     private void RefreshClocks()
     {
-        HomeClock = ClockIn(_settings.HomeTimeZoneId);
-        WorkClock = ClockIn(_settings.RequiredTimeZoneId);
+        HomeClock = ClockIn(_settings.Active.HomeTimeZoneId);
+        WorkClock = ClockIn(_settings.Active.RequiredTimeZoneId);
         Raise(nameof(HomeClock));
         Raise(nameof(WorkClock));
 

@@ -1,0 +1,117 @@
+<Window x:Class="ClaudeWatch.App.SetupWizard"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SafeChat"
+        Width="560" Height="520"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="True"
+        FlowDirection="{Binding Flow}"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
+        MouseLeftButtonDown="OnDrag">
+
+    <Border CornerRadius="16" Background="{DynamicResource Surface}"
+            BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="28">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0">
+                <TextBlock x:Name="Heading" Text="{Binding L[Wiz_Welcome]}"
+                           Style="{StaticResource Display}" FontSize="21" />
+                <TextBlock x:Name="Sub" Text="{Binding L[Wiz_Intro]}" Style="{StaticResource Dim}"
+                           Margin="0,6,0,0" TextWrapping="Wrap" />
+                <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,18,0,0" />
+            </StackPanel>
+
+            <!-- one step visible at a time -->
+            <Grid Grid.Row="1" Margin="0,18,0,0">
+
+                <!-- 1. language -->
+                <StackPanel x:Name="StepLanguage">
+                    <TextBlock Text="{Binding L[Wiz_Lang]}" Style="{StaticResource Display}" FontSize="15" />
+                    <ComboBox Style="{StaticResource Picker}" Margin="0,12,0,0" Width="260"
+                              HorizontalAlignment="Left"
+                              SelectedIndex="{Binding LanguageIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="English" />
+                        <ComboBoxItem Content="فارسی" />
+                    </ComboBox>
+                </StackPanel>
+
+                <!-- 2. which apps -->
+                <StackPanel x:Name="StepApps" Visibility="Collapsed">
+                    <TextBlock Text="{Binding L[Wiz_Apps]}" Style="{StaticResource Display}" FontSize="15" />
+                    <TextBlock Text="{Binding L[Wiz_Apps_Sub]}" Style="{StaticResource Caption}" Margin="0,4,0,0" />
+
+                    <CheckBox x:Name="WantClaude" Style="{StaticResource Switch}" Margin="0,16,0,0"
+                              Content="Claude" IsChecked="True" />
+                    <CheckBox x:Name="WantChatGpt" Style="{StaticResource Switch}" Margin="0,10,0,0"
+                              Content="ChatGPT" IsChecked="False" />
+
+                    <TextBlock x:Name="AppsWarning" Text="" Style="{StaticResource Caption}"
+                               Foreground="{DynamicResource Alert}" Margin="0,12,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- 3. time zones -->
+                <StackPanel x:Name="StepZone" Visibility="Collapsed">
+                    <TextBlock Text="{Binding L[Wiz_Zone]}" Style="{StaticResource Display}" FontSize="15" />
+                    <TextBlock Text="{Binding L[Wiz_Zone_Sub]}" Style="{StaticResource Caption}" Margin="0,4,0,0"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="{Binding L[Set_WorkZone]}" Style="{StaticResource Body}" Margin="0,16,0,0" />
+                    <ComboBox x:Name="WorkZone" Style="{StaticResource Picker}" Margin="0,6,0,0"
+                              ItemsSource="{Binding TimeZones}" DisplayMemberPath="Display"
+                              SelectedValuePath="Id" SelectedValue="{Binding Edit.Active.RequiredTimeZoneId, Mode=TwoWay}" />
+
+                    <TextBlock Text="{Binding L[Set_HomeZone]}" Style="{StaticResource Body}" Margin="0,14,0,0" />
+                    <ComboBox x:Name="HomeZone" Style="{StaticResource Picker}" Margin="0,6,0,0"
+                              ItemsSource="{Binding TimeZones}" DisplayMemberPath="Display"
+                              SelectedValuePath="Id" SelectedValue="{Binding Edit.Active.HomeTimeZoneId, Mode=TwoWay}" />
+                </StackPanel>
+
+                <!-- 4. server and key -->
+                <StackPanel x:Name="StepKey" Visibility="Collapsed">
+                    <TextBlock Text="{Binding L[Wiz_Server]}" Style="{StaticResource Display}" FontSize="15" />
+                    <TextBlock Text="{Binding L[Wiz_Server_Sub]}" Style="{StaticResource Caption}" Margin="0,4,0,0"
+                               TextWrapping="Wrap" />
+                    <TextBox Style="{StaticResource Field}" Margin="0,8,0,0" FontFamily="Consolas, Courier New"
+                             Text="{Binding Edit.OrdersBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <TextBlock Text="{Binding L[Wiz_Key]}" Style="{StaticResource Display}" FontSize="15"
+                               Margin="0,20,0,0" />
+                    <TextBlock Text="{Binding L[Wiz_Key_Sub]}" Style="{StaticResource Caption}" Margin="0,4,0,0"
+                               TextWrapping="Wrap" />
+                    <TextBox Style="{StaticResource Field}" Margin="0,8,0,0"
+                             FontFamily="Consolas, Courier New" CharacterCasing="Upper" MaxLength="24"
+                             Text="{Binding LicenceKeyInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </Grid>
+
+            <!-- footer -->
+            <Grid Grid.Row="2" Margin="0,18,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" x:Name="SkipButton" Content="{Binding L[Wiz_Skip]}"
+                        Style="{StaticResource GhostButton}" Click="OnSkip" />
+
+                <TextBlock x:Name="StepDots" Grid.Column="1" Style="{StaticResource Caption}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button x:Name="BackButton" Content="{Binding L[Wiz_Back]}"
+                            Style="{StaticResource SecondaryButton}" Click="OnBack" Margin="0,0,8,0"
+                            Visibility="Collapsed" />
+                    <Button x:Name="NextButton" Content="{Binding L[Wiz_Next]}"
+                            Style="{StaticResource PrimaryButton}" Click="OnNext" MinWidth="110" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
