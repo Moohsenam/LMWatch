@@ -89,8 +89,13 @@ HONEYPOT="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/orders" \
   -d '{"plan":"pro","months":1,"email":"a@b.com","contact":"@someone","eligible":true,"website":"spam"}')"
 check "the honeypot catches bots" 400 "$HONEYPOT"
 
+NO_NAME="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/orders" \
+  -H 'Content-Type: application/json' \
+  -d '{"plan":"pro","months":1,"email":"a@b.com","contact":"@someone","eligible":true}')"
+check "an order with no name is refused" 400 "$NO_NAME"
+
 CREATED="$(curl -s -X POST "$BASE/api/orders" -H 'Content-Type: application/json' \
-  -d '{"plan":"pro","months":3,"email":"customer@example.com","contact":"@customer","contactKind":"telegram","country":"Germany","note":"first order","eligible":true}')"
+  -d '{"plan":"pro","months":3,"fullName":"Ehsan Test","service":"chatgpt","email":"customer@example.com","contact":"@customer","contactKind":"telegram","country":"Germany","note":"first order","eligible":true}')"
 CODE="$(echo "$CREATED" | grep -oE 'CW-[A-Z0-9]{6}' | head -1)"
 contains "an order gets a code" "CW-" "$CODE"
 
@@ -110,6 +115,8 @@ check "the right password signs in" 200 "$LOGIN"
 LIST="$(curl -s -b "$JAR" "$BASE/api/admin/orders")"
 contains "the owner sees the order" "$CODE" "$LIST"
 contains "the owner sees the email" 'customer@example.com' "$LIST"
+contains "the owner sees the customer name" 'Ehsan Test' "$LIST"
+contains "the owner sees which service it is for" '"service":"chatgpt"' "$LIST"
 
 ID="$(echo "$LIST" | grep -oE '"id":"[a-f0-9]{32}"' | head -1 | cut -d'"' -f4)"
 contains "the order has an id" '' "$ID"
@@ -184,6 +191,63 @@ check "the rate test needs a session" 401 "$(status -X POST "$BASE/api/admin/pri
 contains "a junk source is reported, not swallowed" '"ok":false' \
   "$(curl -s -b "$JAR" -X POST "$BASE/api/admin/pricing/test" -H 'Content-Type: application/json' -H 'X-CW: 1' \
      -d '{"url":"not-a-url","path":"price","unit":"toman"}')"
+
+# --------------------------------------------------------------------- keys
+#
+# A key is bound to the first machine that activates it and dies with its
+# expiry. The checks below are the rules a customer could otherwise get around:
+# sharing one key, and reusing an expired one.
+
+check "activation needs a session-free public route" 200 "$(status -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d '{"code":"SAFE-AAAA-AAAA-AAAA","deviceId":"x"}')"
+contains "an unknown key is refused" '"error":"unknown_key"' \
+  "$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d '{"code":"SAFE-AAAA-AAAA-AAAA","deviceId":"machine-1"}')"
+check "a malformed key is a bad request" 400 "$(status -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d '{"code":"hello","deviceId":"machine-1"}')"
+
+MADE="$(curl -s -b "$JAR" -X POST "$BASE/api/admin/keys" -H 'Content-Type: application/json' -H 'X-CW: 1' \
+  -d '{"count":2,"days":30,"service":"both","customer":"Test Customer"}')"
+contains "keys are made" '"ok":true' "$MADE"
+KEY1="$(printf '%s' "$MADE" | grep -oE 'SAFE-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}' | head -1)"
+KEY2="$(printf '%s' "$MADE" | grep -oE 'SAFE-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}' | tail -1)"
+check "two distinct codes came back" "ok" "$([ -n "$KEY1" ] && [ "$KEY1" != "$KEY2" ] && echo ok || echo no)"
+
+ACT="$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' \
+  -d "{\"code\":\"$KEY1\",\"deviceId\":\"machine-one\",\"deviceName\":\"Ehsan PC\"}")"
+contains "first activation works" '"ok":true' "$ACT"
+contains "it reports the days left" '"daysLeft":30' "$ACT"
+
+contains "the same machine may check in again" '"ok":true' \
+  "$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d "{\"code\":\"$KEY1\",\"deviceId\":\"machine-one\"}")"
+
+contains "a second machine is refused" '"error":"wrong_device"' \
+  "$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d "{\"code\":\"$KEY1\",\"deviceId\":\"machine-two\"}")"
+
+# Lower case and missing dashes are what people actually type.
+contains "a sloppily typed code still matches" '"ok":true' \
+  "$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' \
+     -d "{\"code\":\"$(printf '%s' "$KEY1" | tr 'A-Z' 'a-z' | tr -d '-')\",\"deviceId\":\"machine-one\"}")"
+
+contains "releasing the device frees the key" '"deviceId":""' \
+  "$(curl -s -b "$JAR" -X PATCH "$BASE/api/admin/keys/$KEY1" -H 'Content-Type: application/json' -H 'X-CW: 1' -d '{"releaseDevice":true}')"
+contains "the second machine can now take it" '"ok":true' \
+  "$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d "{\"code\":\"$KEY1\",\"deviceId\":\"machine-two\"}")"
+
+curl -s -b "$JAR" -X PATCH "$BASE/api/admin/keys/$KEY1" -H 'Content-Type: application/json' -H 'X-CW: 1' -d '{"revoked":true}' > /dev/null
+contains "a revoked key stops working" '"error":"revoked"' \
+  "$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d "{\"code\":\"$KEY1\",\"deviceId\":\"machine-two\"}")"
+
+# A key whose window has closed must fail even on its own machine.
+curl -s -b "$JAR" -X PATCH "$BASE/api/admin/keys/$KEY2" -H 'Content-Type: application/json' -H 'X-CW: 1' -d '{"addDays":-9999}' > /dev/null
+contains "an expired key is refused" '"error":"expired"' \
+  "$(curl -s -X POST "$BASE/api/licence" -H 'Content-Type: application/json' -d "{\"code\":\"$KEY2\",\"deviceId\":\"machine-three\"}")"
+
+KEYLIST="$(curl -s -b "$JAR" "$BASE/api/admin/keys")"
+contains "the panel lists them" '"summary"' "$KEYLIST"
+contains "the customer note is kept" 'Test Customer' "$KEYLIST"
+check "the key list needs a session" 401 "$(status "$BASE/api/admin/keys")"
+check "making keys needs a session" 401 "$(status -X POST "$BASE/api/admin/keys" -H 'Content-Type: application/json' -H 'X-CW: 1' -d '{"count":1}')"
+contains "keys export as csv" 'code,state,service' "$(curl -s -b "$JAR" "$BASE/api/admin/keys.csv")"
+
+contains "the trial terms are public" 'trialDays' "$(curl -s "$BASE/api/licence/terms")"
 
 check "logging out clears the session" 200 "$(status -b "$JAR" -c "$JAR" -X POST "$BASE/api/admin/logout" -H 'X-CW: 1')"
 check "the list is shut again" 401 "$(status -b "$JAR" "$BASE/api/admin/orders")"

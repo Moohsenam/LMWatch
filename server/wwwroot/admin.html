@@ -39,6 +39,7 @@
 
   <div class="tabs">
     <button class="on" data-tab="orders">سفارش‌ها</button>
+    <button data-tab="keys">کلیدها</button>
     <button data-tab="pricing">قیمت‌ها</button>
     <button data-tab="settings">تنظیمات</button>
   </div>
@@ -64,6 +65,54 @@
 
     <div class="list" id="orderList"></div>
     <p class="hint hidden" id="emptyList" style="text-align:center;padding:30px">سفارشی نیست.</p>
+  </div>
+
+  <!-- ------------------------------- keys ------------------------------- -->
+  <div id="tab-keys" class="hidden">
+    <div class="tiles" id="keyTiles"></div>
+
+    <section class="card">
+      <h2 class="section">ساخت کلید</h2>
+      <p class="hint">کلید تا وقتی کسی فعالش نکند شروع نمی‌شود، پس می‌توانید از قبل بسازید و انبار کنید.</p>
+
+      <div class="keygrid">
+        <label class="field"><span>تعداد</span><input type="number" id="kCount" dir="ltr" value="1" min="1" max="200"></label>
+        <label class="field"><span>مدت (روز)</span><input type="number" id="kDays" dir="ltr" value="30" min="1"></label>
+        <label class="field"><span>برای کدام سرویس</span>
+          <select id="kService">
+            <option value="both">هر دو</option>
+            <option value="claude">فقط کلاد</option>
+            <option value="chatgpt">فقط چت‌جی‌پی‌تی</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="keygrid">
+        <label class="field"><span>مشتری (اختیاری)</span><input type="text" id="kCustomer" placeholder="نام یا آیدی"></label>
+        <label class="field"><span>کد سفارش (اختیاری)</span><input type="text" id="kOrder" dir="ltr" placeholder="CW-XXXXXX"></label>
+      </div>
+
+      <label class="field"><span>یادداشت (اختیاری)</span><input type="text" id="kNote"></label>
+
+      <button class="primary" id="makeKeys">بساز</button>
+      <div id="madeKeys" class="banner ok hidden" style="margin-top:14px"></div>
+    </section>
+
+    <div class="toolbar">
+      <input type="text" id="keySearch" placeholder="جستجو در کلید، مشتری، دستگاه، یادداشت">
+      <select id="keyFilter">
+        <option value="">همه</option>
+        <option value="Unused">استفاده نشده</option>
+        <option value="Active">فعال</option>
+        <option value="Expired">منقضی</option>
+        <option value="Revoked">لغو شده</option>
+      </select>
+      <button class="secondary small" id="keyRefresh">به‌روزرسانی</button>
+      <button class="secondary small" id="keyCsv">خروجی CSV</button>
+    </div>
+
+    <div class="list" id="keyList"></div>
+    <p class="hint hidden" id="keyEmpty" style="text-align:center;padding:30px">کلیدی نیست.</p>
   </div>
 
   <!-- ------------------------------ pricing ----------------------------- -->
@@ -150,6 +199,16 @@
       <label class="field"><span>راه ارتباطی که به مشتری نشان داده می‌شود</span><input type="text" id="cfgContact" placeholder="@yourhandle"></label>
       <label class="field"><span>لینک آن راه ارتباطی</span><input type="text" id="cfgContactUrl" dir="ltr" placeholder="https://t.me/yourhandle"></label>
       <label class="field"><span>اطلاعیه بالای فرم (خالی بگذارید تا نمایش داده نشود)</span><textarea id="cfgNotice" maxlength="600"></textarea></label>
+    </section>
+
+    <section class="card">
+      <h2 class="section">کلید و دوره آزمایشی</h2>
+      <label class="field row"><span>برای کار کردن محافظت، کلید لازم باشد</span>
+        <input type="checkbox" id="cfgRequireKey"></label>
+      <p class="hint">خاموش باشد، اپ برای همه بدون کلید کار می‌کند. برای تست خودتان به کار می‌آید.</p>
+      <label class="field"><span>روزهای آزمایشی بعد از نصب</span>
+        <input type="number" id="cfgTrialDays" dir="ltr" min="0" max="90"></label>
+      <p class="hint">صفر یعنی از اول کلید لازم است.</p>
     </section>
 
     <section class="card">

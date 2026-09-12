@@ -154,7 +154,7 @@ function renderList() {
           <span class="pill s-${esc(order.status)}"><span class="dot"></span>${STATUS[order.status] || order.status}</span>
           <span>${esc(order.planLabel)} · ${order.months} ماه</span>
         </div>
-        <div class="line2">${esc(order.accountEmail)} · ${esc(order.contact)}</div>
+        <div class="line2">${esc(order.fullName) ? esc(order.fullName) + ' · ' : ''}${esc(order.accountEmail)} · ${esc(order.contact)}</div>
       </div>
       <div class="when">${when(order.createdAt)}</div>
     </div>`).join('');
@@ -197,6 +197,8 @@ function openDrawer(id) {
       <button class="ghost" id="closeDrawer">بستن</button>
     </header>
 
+    <div class="kv"><div class="k">نام مشتری</div><div class="v">${esc(order.fullName) || '—'}</div></div>
+    <div class="kv"><div class="k">سرویس</div><div class="v">${order.service === 'chatgpt' ? 'چت‌جی‌پی‌تی' : 'کلاد'}</div></div>
     <div class="kv"><div class="k">اشتراک</div><div class="v">${esc(order.planLabel)} · ${order.months} ماه</div></div>
     <div class="kv"><div class="k">ایمیل اکانت</div><div class="v" dir="ltr">${esc(order.accountEmail)}</div></div>
     <div class="kv"><div class="k">راه ارتباطی</div><div class="v" dir="ltr">${esc(order.contact)} (${CONTACT[order.contactKind] || esc(order.contactKind)})</div></div>
@@ -327,10 +329,12 @@ document.querySelectorAll('.tabs button').forEach((button) => {
     button.classList.add('on');
     const tab = button.dataset.tab;
     $('tab-orders').classList.toggle('hidden', tab !== 'orders');
+    $('tab-keys').classList.toggle('hidden', tab !== 'keys');
     $('tab-pricing').classList.toggle('hidden', tab !== 'pricing');
     $('tab-settings').classList.toggle('hidden', tab !== 'settings');
 
     if (tab === 'pricing') loadPricing();
+    if (tab === 'keys') loadKeys();
   });
 });
 
@@ -346,6 +350,8 @@ async function loadConfig() {
   $('cfgContact').value = config.contactLine || '';
   $('cfgContactUrl').value = config.contactUrl || '';
   $('cfgNotice').value = config.notice || '';
+  $('cfgRequireKey').checked = config.requireKey !== false;
+  $('cfgTrialDays').value = config.trialDays ?? 3;
   $('brandName').textContent = config.businessName || 'پنل سفارش‌ها';
   renderPlanRows();
 }
@@ -408,6 +414,8 @@ $('saveSettings').addEventListener('click', async () => {
     contactLine: $('cfgContact').value,
     contactUrl: $('cfgContactUrl').value,
     notice: $('cfgNotice').value,
+    requireKey: $('cfgRequireKey').checked,
+    trialDays: Number($('cfgTrialDays').value) || 0,
     plans: collectPlans()
   };
 
@@ -419,6 +427,143 @@ $('saveSettings').addEventListener('click', async () => {
 
   if (response.ok) loadConfig();
 });
+
+// -------------------------------------------------------------------- keys
+
+const KEY_STATE = {
+  Unused: 'استفاده نشده',
+  Active: 'فعال',
+  Expired: 'منقضی',
+  Revoked: 'لغو شده'
+};
+
+const KEY_SERVICE = { both: 'هر دو', claude: 'کلاد', chatgpt: 'چت‌جی‌پی‌تی' };
+
+let keySearchTimer = null;
+
+async function loadKeys() {
+  const params = new URLSearchParams();
+  if ($('keyFilter').value) params.set('state', $('keyFilter').value);
+  if ($('keySearch').value.trim()) params.set('q', $('keySearch').value.trim());
+
+  let data;
+  try {
+    const response = await api('/api/admin/keys?' + params.toString());
+    data = await response.json();
+  } catch (e) {
+    return;
+  }
+
+  const s = data.summary || {};
+  $('keyTiles').innerHTML = [
+    ['همه', s.total],
+    ['فعال', s.active],
+    ['استفاده نشده', s.unused],
+    ['رو به پایان', s.endingSoon],
+    ['منقضی', s.expired]
+  ].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v ?? 0}</div></div>`).join('');
+
+  const items = data.items || [];
+  $('keyEmpty').classList.toggle('hidden', items.length > 0);
+
+  $('keyList').innerHTML = items.map((key) => {
+    const bits = [];
+    if (key.customer) bits.push(esc(key.customer));
+    if (key.deviceName) bits.push('دستگاه: ' + esc(key.deviceName));
+    if (key.state === 'Active') bits.push(key.daysLeft + ' روز مانده');
+    if (key.state === 'Unused') bits.push(key.days + ' روزه');
+    if (key.orderCode) bits.push('سفارش ' + esc(key.orderCode));
+    if (key.note) bits.push(esc(key.note));
+
+    return `
+      <div class="key-row" data-code="${esc(key.code)}">
+        <span class="code">${esc(key.code)}</span>
+        <span class="kpill ${key.state}">${KEY_STATE[key.state] || key.state}</span>
+        <span class="kpill Unused">${KEY_SERVICE[key.service] || key.service}</span>
+        <span class="who">${bits.join(' · ') || '—'}</span>
+        <span class="acts">
+          <button class="ghost small" data-copy="${esc(key.code)}">کپی</button>
+          ${key.deviceId ? `<button class="secondary small" data-release="${esc(key.code)}">آزادسازی دستگاه</button>` : ''}
+          <button class="secondary small" data-add="${esc(key.code)}">+۳۰ روز</button>
+          ${key.state === 'Revoked'
+            ? `<button class="secondary small" data-unrevoke="${esc(key.code)}">برگردان</button>`
+            : `<button class="danger small" data-revoke="${esc(key.code)}">لغو</button>`}
+        </span>
+      </div>`;
+  }).join('');
+
+  bindKeyActions();
+}
+
+function bindKeyActions() {
+  const patch = async (code, body) => {
+    await api('/api/admin/keys/' + encodeURIComponent(code), {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    });
+    loadKeys();
+  };
+
+  $('keyList').querySelectorAll('[data-copy]').forEach((b) =>
+    b.addEventListener('click', () => {
+      navigator.clipboard?.writeText(b.dataset.copy);
+      b.textContent = 'کپی شد';
+      setTimeout(() => (b.textContent = 'کپی'), 1200);
+    }));
+
+  $('keyList').querySelectorAll('[data-release]').forEach((b) =>
+    b.addEventListener('click', () => patch(b.dataset.release, { releaseDevice: true })));
+
+  $('keyList').querySelectorAll('[data-add]').forEach((b) =>
+    b.addEventListener('click', () => patch(b.dataset.add, { addDays: 30 })));
+
+  $('keyList').querySelectorAll('[data-revoke]').forEach((b) =>
+    b.addEventListener('click', () => patch(b.dataset.revoke, { revoked: true })));
+
+  $('keyList').querySelectorAll('[data-unrevoke]').forEach((b) =>
+    b.addEventListener('click', () => patch(b.dataset.unrevoke, { revoked: false })));
+}
+
+$('makeKeys').addEventListener('click', async () => {
+  const response = await api('/api/admin/keys', {
+    method: 'POST',
+    body: JSON.stringify({
+      count: Number($('kCount').value) || 1,
+      days: Number($('kDays').value) || 30,
+      service: $('kService').value,
+      customer: $('kCustomer').value.trim(),
+      note: $('kNote').value.trim(),
+      orderCode: $('kOrder').value.trim()
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  const box = $('madeKeys');
+
+  if (data.ok) {
+    box.className = 'banner ok';
+    // Shown all at once so a batch can be copied in one go.
+    box.innerHTML = 'ساخته شد:<br><span class="code" dir="ltr">'
+      + data.codes.map(esc).join('<br>') + '</span>';
+    $('kCustomer').value = '';
+    $('kNote').value = '';
+    $('kOrder').value = '';
+    loadKeys();
+  } else {
+    box.className = 'banner bad';
+    box.textContent = 'ساخته نشد.';
+  }
+
+  box.classList.remove('hidden');
+});
+
+$('keyRefresh').addEventListener('click', loadKeys);
+$('keyFilter').addEventListener('change', loadKeys);
+$('keySearch').addEventListener('input', () => {
+  clearTimeout(keySearchTimer);
+  keySearchTimer = setTimeout(loadKeys, 300);
+});
+$('keyCsv').addEventListener('click', () => window.open('/api/admin/keys.csv', '_blank'));
 
 // ----------------------------------------------------------------- pricing
 

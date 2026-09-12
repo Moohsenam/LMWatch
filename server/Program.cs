@@ -137,6 +137,42 @@ app.MapGet("/api/service", () =>
 // No rate, no dollar price, no markup, unless the owner turns that on.
 app.MapGet("/api/pricing", () => Results.Json(pricing.PublicView()));
 
+// ------------------------------------------------------------------- keys
+//
+// Activation and the periodic re-check are the same call. The app sends the
+// code and a device fingerprint; it gets back how long it has. Rate limited,
+// because this endpoint is the one a guesser would hammer.
+
+app.MapPost("/api/licence", (HttpContext context, KeyRequest request) =>
+{
+    if (!limiter.Allow("licence:" + ClientKey(context), 20, TimeSpan.FromMinutes(5)))
+    {
+        return Results.Json(new { ok = false, error = "slow_down" }, statusCode: 429);
+    }
+
+    if (!Keys.LooksLikeCode(request.Code))
+    {
+        return Results.Json(new { ok = false, error = "bad_shape" }, statusCode: 400);
+    }
+
+    var answer = store.CheckKey(request.Code, request.DeviceId, request.DeviceName);
+
+    if (!answer.Ok)
+    {
+        app.Logger.LogInformation("Licence check refused: {Error}", answer.Error);
+    }
+
+    return Results.Json(answer.ToJson());
+});
+
+// How long a fresh install protects before a key is needed. The app asks once
+// and remembers, so a customer who never reaches the server still gets a trial.
+app.MapGet("/api/licence/terms", () => Results.Json(new
+{
+    trialDays = store.Config.TrialDays,
+    keysRequired = store.Config.RequireKey
+}));
+
 app.MapPost("/api/orders", async (HttpContext context, OrderRequest request) =>
 {
     if (!limiter.Allow("order:" + ClientKey(context), 6, TimeSpan.FromHours(1)))
@@ -176,11 +212,19 @@ app.MapPost("/api/orders", async (HttpContext context, OrderRequest request) =>
         return Results.Json(new { error = "eligibility_required" }, statusCode: 400);
     }
 
+    var fullName = Text.Clip(request.FullName, 120);
+    if (fullName.Length < 2)
+    {
+        return Results.Json(new { error = "bad_name" }, statusCode: 400);
+    }
+
     var order = store.Create(new Order
     {
         PlanKey = plan.Key,
         PlanLabel = plan.Label,
         Months = Math.Clamp(request.Months, 1, 12),
+        Service = string.Equals(request.Service, "chatgpt", StringComparison.OrdinalIgnoreCase) ? "chatgpt" : "claude",
+        FullName = fullName,
         AccountEmail = email,
         Contact = contact,
         ContactKind = Text.Clip(request.ContactKind, 20),
@@ -319,7 +363,9 @@ app.MapGet("/api/admin/config", (HttpContext context) =>
         config.ContactLine,
         config.ContactUrl,
         config.Notice,
-        config.Plans
+        config.Plans,
+        config.TrialDays,
+        config.RequireKey
     });
 });
 
@@ -337,6 +383,8 @@ app.MapPut("/api/admin/config", (HttpContext context, ConfigUpdate update) =>
         if (update.ContactLine is not null) config.ContactLine = Text.Clip(update.ContactLine, 200);
         if (update.ContactUrl is not null) config.ContactUrl = Text.Clip(update.ContactUrl, 300);
         if (update.Notice is not null) config.Notice = Text.Clip(update.Notice, 600);
+        if (update.TrialDays is { } trial) config.TrialDays = Math.Clamp(trial, 0, 90);
+        if (update.RequireKey is { } requireKey) config.RequireKey = requireKey;
 
         if (update.Plans is not null)
         {
@@ -419,6 +467,119 @@ app.MapPost("/api/admin/password", (HttpContext context, PasswordChangeRequest r
     auth.SetPassword(request.Next.Trim());
     context.Response.Cookies.Delete(Auth.CookieName);
     return Results.Json(new { ok = true });
+});
+
+// --------------------------------------------------------------- admin keys
+
+app.MapGet("/api/admin/keys", (HttpContext context, string? state, string? q) =>
+{
+    var guard = RequireAdmin(context);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    IEnumerable<LicenceKey> keys = store.AllKeys();
+
+    if (!string.IsNullOrWhiteSpace(state) && Enum.TryParse<KeyState>(state, true, out var wanted))
+    {
+        keys = keys.Where(k => k.State(now) == wanted);
+    }
+
+    if (!string.IsNullOrWhiteSpace(q))
+    {
+        var needle = q.Trim();
+        keys = keys.Where(k =>
+            k.Code.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+            k.Customer.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+            k.Note.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+            k.OrderCode.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+            k.DeviceName.Contains(needle, StringComparison.OrdinalIgnoreCase));
+    }
+
+    return Results.Json(new
+    {
+        summary = store.KeySummary(),
+        items = keys.Take(500).Select(k => k.ToAdmin(now))
+    });
+});
+
+app.MapPost("/api/admin/keys", (HttpContext context, KeyMakeRequest request) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var count = Math.Clamp(request.Count, 1, 200);
+    var days = Math.Clamp(request.Days, 1, 3650);
+
+    var service = request.Service?.ToLowerInvariant() switch
+    {
+        "claude" => "claude",
+        "chatgpt" => "chatgpt",
+        _ => "both"
+    };
+
+    var made = store.MakeKeys(
+        count, days, service,
+        Text.Clip(request.Customer, 120),
+        Text.Clip(request.Note, 300),
+        Text.Clip(request.OrderCode, 30));
+
+    app.Logger.LogInformation("Made {Count} key(s) for {Days} days", made.Count, days);
+
+    return Results.Json(new { ok = true, codes = made.Select(k => k.Code) });
+});
+
+app.MapPatch("/api/admin/keys/{code}", (HttpContext context, string code, KeyEditRequest change) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var key = store.EditKey(code, change);
+    return key is null
+        ? Results.Json(new { error = "not_found" }, statusCode: 404)
+        : Results.Json(key.ToAdmin(DateTimeOffset.UtcNow));
+});
+
+app.MapDelete("/api/admin/keys/{code}", (HttpContext context, string code) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    return store.DeleteKey(code)
+        ? Results.Json(new { ok = true })
+        : Results.Json(new { error = "not_found" }, statusCode: 404);
+});
+
+app.MapGet("/api/admin/keys.csv", (HttpContext context) =>
+{
+    var guard = RequireAdmin(context);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    var csv = new StringBuilder("code,state,service,days,daysLeft,activatedAt,expiresAt,device,customer,order\n");
+
+    foreach (var key in store.AllKeys())
+    {
+        csv.Append($"{key.Code},{key.State(now)},{key.Service},{key.Days},{key.DaysLeft(now)},")
+           .Append($"{key.ActivatedAt:yyyy-MM-dd},{key.ExpiresAt:yyyy-MM-dd},")
+           .Append($"{Text.Csv(key.DeviceName)},{Text.Csv(key.Customer)},{Text.Csv(key.OrderCode)}\n");
+    }
+
+    return Results.Text(csv.ToString(), "text/csv");
 });
 
 // ------------------------------------------------------------ admin pricing

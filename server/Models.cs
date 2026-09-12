@@ -45,6 +45,12 @@ public sealed class Order
     public string PlanLabel { get; set; } = string.Empty;
     public int Months { get; set; } = 1;
 
+    /// <summary>claude or chatgpt. Which service the order is for.</summary>
+    public string Service { get; set; } = "claude";
+
+    /// <summary>Who to ask for when calling.</summary>
+    public string FullName { get; set; } = string.Empty;
+
     public string AccountEmail { get; set; } = string.Empty;
     public string Contact { get; set; } = string.Empty;
     public string ContactKind { get; set; } = "telegram";
@@ -72,6 +78,7 @@ public sealed class Order
     {
         code = Code,
         plan = PlanLabel,
+        service = Service,
         months = Months,
         status = Status.ToString(),
         createdAt = CreatedAt,
@@ -155,6 +162,12 @@ public sealed class ServiceConfig
 
     public PricingConfig Pricing { get; set; } = new();
 
+    /// <summary>Days a fresh install protects for before a key is needed.</summary>
+    public int TrialDays { get; set; } = 3;
+
+    /// <summary>Off means the guard runs for anyone, key or not.</summary>
+    public bool RequireKey { get; set; } = true;
+
     // Auth material. Generated on first run, never shipped with the source.
     public string PasswordHash { get; set; } = string.Empty;
     public string PasswordSalt { get; set; } = string.Empty;
@@ -212,6 +225,8 @@ public sealed class OrderRequest
 {
     public string? Plan { get; set; }
     public int Months { get; set; } = 1;
+    public string? Service { get; set; }
+    public string? FullName { get; set; }
     public string? Email { get; set; }
     public string? Contact { get; set; }
     public string? ContactKind { get; set; }
@@ -255,6 +270,8 @@ public sealed class ConfigUpdate
     public string? Notice { get; set; }
     public List<Plan>? Plans { get; set; }
     public PricingUpdate? Pricing { get; set; }
+    public int? TrialDays { get; set; }
+    public bool? RequireKey { get; set; }
 }
 
 public sealed class PricingUpdate

@@ -26,9 +26,11 @@ public sealed class Store
     private readonly string _root;
     private readonly string _ordersFile;
     private readonly string _configFile;
+    private readonly string _keysFile;
     private readonly string _backupFolder;
 
     private List<Order> _orders = new();
+    private List<LicenceKey> _keys = new();
     private ServiceConfig _config = ServiceConfig.CreateDefault();
     private DateOnly _lastBackup = DateOnly.MinValue;
 
@@ -42,6 +44,7 @@ public sealed class Store
 
         _ordersFile = Path.Combine(_root, "orders.json");
         _configFile = Path.Combine(_root, "config.json");
+        _keysFile = Path.Combine(_root, "keys.json");
 
         Load();
     }
@@ -60,6 +63,7 @@ public sealed class Store
         lock (_gate)
         {
             _orders = Read<List<Order>>(_ordersFile) ?? new List<Order>();
+            _keys = Read<List<LicenceKey>>(_keysFile) ?? new List<LicenceKey>();
             _config = Read<ServiceConfig>(_configFile) ?? ServiceConfig.CreateDefault();
 
             if (_config.Plans.Count == 0)
@@ -190,6 +194,7 @@ public sealed class Store
                     o.Code.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                     o.AccountEmail.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                     o.Contact.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                    o.FullName.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                     o.PlanLabel.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                     o.OwnerNote.Contains(needle, StringComparison.OrdinalIgnoreCase));
             }
@@ -254,6 +259,229 @@ public sealed class Store
             }
 
             return removed;
+        }
+    }
+
+    // ----------------------------------------------------------------- keys
+
+    public IReadOnlyList<LicenceKey> AllKeys()
+    {
+        lock (_gate)
+        {
+            return _keys.OrderByDescending(k => k.CreatedAt).ToList();
+        }
+    }
+
+    public LicenceKey? KeyByCode(string? code)
+    {
+        var wanted = Keys.Normalize(code);
+
+        lock (_gate)
+        {
+            return _keys.FirstOrDefault(k => string.Equals(k.Code, wanted, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>Makes a batch and writes it once.</summary>
+    public List<LicenceKey> MakeKeys(int count, int days, string service, string customer, string note, string orderCode)
+    {
+        var made = new List<LicenceKey>();
+
+        lock (_gate)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                string code;
+                var attempt = 0;
+
+                do
+                {
+                    code = global::ClaudeWatch.Orders.Keys.NewCode();
+                    attempt++;
+                }
+                while (attempt < 40 && _keys.Any(k => string.Equals(k.Code, code, StringComparison.OrdinalIgnoreCase)));
+
+                var key = new LicenceKey
+                {
+                    Code = code,
+                    Days = days,
+                    Service = service,
+                    Customer = customer,
+                    Note = note,
+                    OrderCode = orderCode
+                };
+
+                _keys.Add(key);
+                made.Add(key);
+            }
+
+            WriteAtomic(_keysFile, _keys);
+        }
+
+        return made;
+    }
+
+    /// <summary>
+    /// Activation and the periodic check are the same operation: find the key,
+    /// bind it to this machine if it is not bound yet, and answer with where it
+    /// stands. A key already bound elsewhere is refused.
+    /// </summary>
+    public LicenceAnswer CheckKey(string? code, string? deviceRaw, string? deviceName)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = global::ClaudeWatch.Orders.Keys.Fingerprint(deviceRaw);
+
+        lock (_gate)
+        {
+            var key = _keys.FirstOrDefault(k =>
+                string.Equals(k.Code, global::ClaudeWatch.Orders.Keys.Normalize(code), StringComparison.OrdinalIgnoreCase));
+
+            if (key is null)
+            {
+                return new LicenceAnswer { Error = "unknown_key" };
+            }
+
+            if (key.Revoked)
+            {
+                return new LicenceAnswer { Error = "revoked", State = "Revoked" };
+            }
+
+            if (string.IsNullOrEmpty(device))
+            {
+                return new LicenceAnswer { Error = "no_device" };
+            }
+
+            // Two separate things happen on activation, and they have to stay
+            // separate: the clock starts once and never restarts, while the
+            // device binds whenever the key is not currently bound to one. That
+            // second case is what "release device" in the panel leaves behind,
+            // and treating it as a mismatch would make the button do nothing.
+            if (key.ActivatedAt is null)
+            {
+                key.ActivatedAt = now;
+                key.ExpiresAt = now.AddDays(Math.Max(1, key.Days));
+            }
+
+            if (string.IsNullOrEmpty(key.DeviceId))
+            {
+                key.DeviceId = device;
+                key.DeviceName = Text.Clip(deviceName, 60);
+            }
+            else if (!string.Equals(key.DeviceId, device, StringComparison.OrdinalIgnoreCase))
+            {
+                // Bound to another machine. The owner can free it in the panel.
+                return new LicenceAnswer
+                {
+                    Error = "wrong_device",
+                    State = key.State(now).ToString(),
+                    Service = key.Service,
+                    ExpiresAt = key.ExpiresAt,
+                    DaysLeft = key.DaysLeft(now)
+                };
+            }
+
+            key.LastSeenAt = now;
+            key.Checks++;
+
+            if (!string.IsNullOrWhiteSpace(deviceName))
+            {
+                key.DeviceName = Text.Clip(deviceName, 60);
+            }
+
+            WriteAtomic(_keysFile, _keys);
+
+            var state = key.State(now);
+
+            if (state == KeyState.Expired)
+            {
+                return new LicenceAnswer
+                {
+                    Error = "expired",
+                    State = state.ToString(),
+                    Service = key.Service,
+                    ExpiresAt = key.ExpiresAt,
+                    DaysLeft = 0
+                };
+            }
+
+            return new LicenceAnswer
+            {
+                Ok = true,
+                State = state.ToString(),
+                Service = key.Service,
+                ExpiresAt = key.ExpiresAt,
+                DaysLeft = key.DaysLeft(now)
+            };
+        }
+    }
+
+    public LicenceKey? EditKey(string code, KeyEditRequest change)
+    {
+        lock (_gate)
+        {
+            var key = _keys.FirstOrDefault(k =>
+                string.Equals(k.Code, global::ClaudeWatch.Orders.Keys.Normalize(code), StringComparison.OrdinalIgnoreCase));
+
+            if (key is null)
+            {
+                return null;
+            }
+
+            if (change.Customer is not null) { key.Customer = Text.Clip(change.Customer, 120); }
+            if (change.Note is not null) { key.Note = Text.Clip(change.Note, 300); }
+            if (change.Revoked is { } revoked) { key.Revoked = revoked; }
+
+            if (change.ReleaseDevice == true)
+            {
+                key.DeviceId = string.Empty;
+                key.DeviceName = string.Empty;
+            }
+
+            if (change.AddDays is { } add && add != 0)
+            {
+                var from = key.ExpiresAt ?? DateTimeOffset.UtcNow;
+                key.ExpiresAt = from.AddDays(add);
+
+                // Extending a key that never ran should not leave it looking unused.
+                key.ActivatedAt ??= DateTimeOffset.UtcNow;
+            }
+
+            WriteAtomic(_keysFile, _keys);
+            return key;
+        }
+    }
+
+    public bool DeleteKey(string code)
+    {
+        lock (_gate)
+        {
+            var wanted = global::ClaudeWatch.Orders.Keys.Normalize(code);
+            var removed = _keys.RemoveAll(k => string.Equals(k.Code, wanted, StringComparison.OrdinalIgnoreCase)) > 0;
+
+            if (removed)
+            {
+                WriteAtomic(_keysFile, _keys);
+            }
+
+            return removed;
+        }
+    }
+
+    public object KeySummary()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        lock (_gate)
+        {
+            return new
+            {
+                total = _keys.Count,
+                unused = _keys.Count(k => k.State(now) == KeyState.Unused),
+                active = _keys.Count(k => k.State(now) == KeyState.Active),
+                expired = _keys.Count(k => k.State(now) == KeyState.Expired),
+                revoked = _keys.Count(k => k.State(now) == KeyState.Revoked),
+                endingSoon = _keys.Count(k => k.State(now) == KeyState.Active && k.DaysLeft(now) <= 7)
+            };
         }
     }
 

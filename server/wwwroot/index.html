@@ -33,6 +33,19 @@
     <div class="divider"></div>
 
     <form id="orderForm" autocomplete="off">
+      <label class="field">
+        <span data-t="fullName">نام و نام خانوادگی</span>
+        <input type="text" id="fullName" required placeholder="برای اینکه بدانیم با کی صحبت می‌کنیم">
+      </label>
+
+      <label class="field">
+        <span data-t="service">سرویس</span>
+        <select id="service">
+          <option value="claude">Claude</option>
+          <option value="chatgpt">ChatGPT</option>
+        </select>
+      </label>
+
       <div class="row">
         <label class="field">
           <span data-t="plan">اشتراک</span>
@@ -50,7 +63,7 @@
       </div>
 
       <label class="field">
-        <span data-t="email">ایمیل اکانت Claude</span>
+        <span data-t="email">ایمیل اکانتی که اشتراک رویش فعال شود</span>
         <input type="email" id="email" required placeholder="you@example.com" dir="ltr">
       </label>
 
