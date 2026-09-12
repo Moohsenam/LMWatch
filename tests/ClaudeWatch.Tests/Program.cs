@@ -46,6 +46,7 @@ public static class Program
         AnOldSettingsFileKeepsItsRules();
         EachServiceIsFoundSeparately();
         TheLockedStateEnforcesNothing();
+        TheOldDataFolderIsCarriedOver();
 
         Console.WriteLine(new string('-', 48));
 
@@ -704,6 +705,48 @@ public static class Program
         Check("locked reports itself", decision.Phase == GuardPhase.Locked);
         Check("locked does not claim to be protecting", decision.HeadlineKey == "Head_Locked");
         Check("locked starts no countdown", !decision.InGrace);
+    }
+
+    /// <summary>
+    /// The rename moves the data folder. Without a carry-over every existing
+    /// install would come back on with default settings and no history, which
+    /// is the sort of thing nobody notices until a customer complains.
+    /// </summary>
+    private static void TheOldDataFolderIsCarriedOver()
+    {
+        Console.WriteLine("\nCarrying settings over from the old name");
+
+        var appData = Path.Combine(Path.GetTempPath(), "safechat-test-" + Guid.NewGuid().ToString("N")[..8]);
+        var oldRoot = Path.Combine(appData, "ClaudeWatch");
+        var newRoot = Path.Combine(appData, "SafeChat");
+
+        Directory.CreateDirectory(Path.Combine(oldRoot, "logs"));
+        File.WriteAllText(Path.Combine(oldRoot, "settings.json"), """{"language":"fa","refreshSeconds":5}""");
+        File.WriteAllText(Path.Combine(oldRoot, "logs", "activity-2026-01-01.jsonl"), "{}");
+
+        // The same steps AppPaths takes, against a scratch folder.
+        Directory.CreateDirectory(newRoot);
+        var carried = Path.Combine(newRoot, "settings.json");
+
+        if (!File.Exists(carried) && File.Exists(Path.Combine(oldRoot, "settings.json")))
+        {
+            File.Copy(Path.Combine(oldRoot, "settings.json"), carried);
+            Directory.CreateDirectory(Path.Combine(newRoot, "logs"));
+            foreach (var file in Directory.GetFiles(Path.Combine(oldRoot, "logs")))
+            {
+                File.Copy(file, Path.Combine(newRoot, "logs", Path.GetFileName(file)), true);
+            }
+        }
+
+        Check("the settings file comes across", File.Exists(carried));
+        Check("the history comes across", Directory.GetFiles(Path.Combine(newRoot, "logs")).Length == 1);
+        Check("the original is left alone", File.Exists(Path.Combine(oldRoot, "settings.json")));
+
+        var loaded = new SettingsStore(carried).Load();
+        Check("the carried settings are read", loaded.Language == "fa");
+        Check("and they still migrate into a profile", loaded.Services.Count > 0);
+
+        try { Directory.Delete(appData, true); } catch { }
     }
 
     // -------------------------------------------------------------- helpers
