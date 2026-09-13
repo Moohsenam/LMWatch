@@ -8,9 +8,9 @@
 # Safe to run again: it pulls, rebuilds, and restarts without touching the data.
 set -euo pipefail
 
-GH_TOKEN="${GH_TOKEN:?set GH_TOKEN first}"
 REPO="${REPO:-Moohsenam/LMWatch}"
 DOMAIN="${DOMAIN:-}"
+GH_TOKEN="${GH_TOKEN:-}"
 
 REPO_DIR=/srv/claude-watch
 APP_DIR=/opt/cw-orders
@@ -55,8 +55,15 @@ say "SDK: $(dotnet --version)"
 
 say "Fetching the code"
 if [ -d "$REPO_DIR/.git" ]; then
+  # The token was stored on the first run, so re-running this needs nothing.
   git -C "$REPO_DIR" pull --ff-only
 else
+  if [ -z "$GH_TOKEN" ]; then
+    echo "First run on this machine, so it needs the token:" >&2
+    echo "  export GH_TOKEN=github_pat_...  &&  sudo -E bash bootstrap.sh" >&2
+    exit 1
+  fi
+
   git clone --quiet "https://x-access-token:$GH_TOKEN@github.com/$REPO.git" "$REPO_DIR"
   # The token does not stay in the repo config. It goes in a root-only file.
   git -C "$REPO_DIR" remote set-url origin "https://github.com/$REPO.git"
@@ -120,6 +127,92 @@ systemctl daemon-reload
 systemctl enable --now cw-orders
 sleep 5
 
+# --------------------------------------------------- 6b. hands-off updates
+
+# From here on a push is the whole deployment. This checks every two minutes,
+# and on a quiet repo it is one `git fetch` and nothing else.
+say "Auto-update every two minutes"
+
+cat > /usr/local/bin/cw-update <<'UPDATE'
+#!/usr/bin/env bash
+# Pulls, and rebuilds only when the commit actually moved.
+set -euo pipefail
+
+REPO_DIR=/srv/claude-watch
+APP_DIR=/opt/cw-orders
+
+before="$(git -C "$REPO_DIR" rev-parse HEAD)"
+git -C "$REPO_DIR" fetch --quiet origin main
+after="$(git -C "$REPO_DIR" rev-parse origin/main)"
+
+if [ "$before" = "$after" ]; then
+  exit 0
+fi
+
+git -C "$REPO_DIR" merge --ff-only --quiet origin/main
+
+echo "cw-update: ${before:0:7} -> ${after:0:7}, building"
+
+rm -rf "$APP_DIR.new"
+dotnet publish "$REPO_DIR/server/ClaudeWatch.Orders.csproj" -c Release -o "$APP_DIR.new" --nologo -v quiet
+
+if [ ! -f "$APP_DIR.new/ClaudeWatch.Orders.dll" ]; then
+  echo "cw-update: the build produced nothing, leaving the running version alone" >&2
+  rm -rf "$APP_DIR.new"
+  exit 1
+fi
+
+systemctl stop cw-orders
+rm -rf "$APP_DIR.old"
+mv "$APP_DIR" "$APP_DIR.old"
+mv "$APP_DIR.new" "$APP_DIR"
+chown -R cworders:cworders "$APP_DIR"
+systemctl start cw-orders
+
+# A push that does not answer is put back, rather than left down until someone
+# notices. Ten seconds is long enough for the service to be up or not.
+sleep 10
+if ! curl -fs --max-time 5 http://127.0.0.1:5080/api/health > /dev/null; then
+  echo "cw-update: the new build does not answer, rolling back" >&2
+  systemctl stop cw-orders
+  rm -rf "$APP_DIR.bad"
+  mv "$APP_DIR" "$APP_DIR.bad"
+  mv "$APP_DIR.old" "$APP_DIR"
+  systemctl start cw-orders
+  exit 1
+fi
+
+echo "cw-update: now on ${after:0:7}"
+UPDATE
+
+chmod 755 /usr/local/bin/cw-update
+
+cat > /etc/systemd/system/cw-update.service <<'UNIT'
+[Unit]
+Description=SafeChat orders — pull and rebuild if the repo moved
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cw-update
+UNIT
+
+cat > /etc/systemd/system/cw-update.timer <<'UNIT'
+[Unit]
+Description=Check the repo for new commits
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now cw-update.timer
+
 # -------------------------------------------------------------- 7. HTTPS
 
 if [ -n "$DOMAIN" ]; then
@@ -151,6 +244,8 @@ echo "health: $(curl -s --max-time 5 http://127.0.0.1:5080/api/health || echo 'n
 echo
 echo "  Order form:  $URL"
 echo "  Admin panel: $URL/admin.html"
+echo "  Updates:     automatic, within two minutes of a push"
+echo "               watch them with:  journalctl -u cw-update -f"
 echo "  First password:"
 cat "$DATA_DIR/FIRST-RUN-PASSWORD.txt" 2>/dev/null | sed 's/^/    /' || echo "    see $DATA_DIR/FIRST-RUN-PASSWORD.txt"
 echo

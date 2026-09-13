@@ -1,8 +1,49 @@
 # Putting the orders service on a server
 
-The aim is that after the one-time setup below, an update is nothing: changes
-are pushed to the repo and the server picks them up by itself within two
-minutes. No uploading, no publishing by hand, no touching the server again.
+One command stands it up, and after that a push is the whole deployment: the
+server checks the repo every two minutes and rebuilds itself when the commit
+moves. No uploading, no publishing by hand, no touching the server again.
+
+## The short way (Linux)
+
+On the server, as a user who can sudo:
+
+```bash
+export GH_TOKEN=github_pat_...          # needs Contents: read on the repo
+export DOMAIN=orders.example.com        # leave this out for plain HTTP on :5080
+
+curl -sSL -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
+  https://api.github.com/repos/Moohsenam/LMWatch/contents/server/bootstrap.sh -o bootstrap.sh
+
+sudo -E bash bootstrap.sh
+```
+
+It installs git, the .NET 8 SDK, clones the repo, builds, writes the systemd
+service, sets up HTTPS with Caddy when DOMAIN is given, installs the
+two-minute auto-update timer, and prints the admin password it generated on
+the first run.
+
+Point the domain's DNS at the server before running it, or the certificate
+cannot be issued.
+
+**Later updates need nothing.** Push, wait two minutes. To watch it happen:
+
+```bash
+journalctl -u cw-update -f
+```
+
+To force one immediately:
+
+```bash
+sudo systemctl start cw-update
+```
+
+A build that fails leaves the running version alone, and a build that starts
+but does not answer `/api/health` is rolled back within ten seconds.
+
+Everything below is the long way, and the Docker route.
+
+---
 
 Two routes. Pick one.
 
