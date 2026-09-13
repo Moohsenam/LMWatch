@@ -70,7 +70,41 @@ public sealed class Store
             {
                 _config.Plans = ServiceConfig.CreateDefault().Plans;
             }
+
+            SeedChatGptPlansOnce();
         }
+    }
+
+    /// <summary>
+    /// A config file written before ChatGPT existed here has only Claude plans
+    /// in it, so an upgraded server would show an empty list to anyone picking
+    /// ChatGPT. The defaults are added once, and the flag means an owner who
+    /// then deletes them does not get them back on the next restart.
+    /// </summary>
+    private void SeedChatGptPlansOnce()
+    {
+        if (_config.ChatGptPlansSeeded)
+        {
+            return;
+        }
+
+        _config.ChatGptPlansSeeded = true;
+
+        var existing = _config.Plans
+            .Select(p => p.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = ServiceConfig.CreateDefault().Plans
+            .Where(p => p.Service == "chatgpt" && !existing.Contains(p.Key))
+            .ToList();
+
+        if (added.Count > 0)
+        {
+            _config.Plans.AddRange(added);
+            Console.WriteLine($"[store] added {added.Count} ChatGPT plan(s) to an older config");
+        }
+
+        WriteAtomic(_configFile, _config);
     }
 
     private static T? Read<T>(string path)

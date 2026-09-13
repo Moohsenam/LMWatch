@@ -175,6 +175,13 @@ public sealed class ServiceConfig
     /// <summary>Off means the guard runs for anyone, key or not.</summary>
     public bool RequireKey { get; set; } = true;
 
+    /// <summary>
+    /// Set once the ChatGPT plans have been offered to this config, so an
+    /// upgraded server gets them and an owner who removes them keeps them
+    /// removed.
+    /// </summary>
+    public bool ChatGptPlansSeeded { get; set; }
+
     // Auth material. Generated on first run, never shipped with the source.
     public string PasswordHash { get; set; } = string.Empty;
     public string PasswordSalt { get; set; } = string.Empty;
