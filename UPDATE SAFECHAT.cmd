@@ -34,11 +34,19 @@ if not exist "%CLONE%\.git" (
 
 cd /d "%CLONE%"
 
+rem A copy made from a bundle points at that file, or at nothing at all, and
+rem then "pull" quietly has nowhere to pull from. Point it at GitHub every
+rem time: it costs nothing when it is already right.
+git remote remove origin >nul 2>&1
+git remote add origin "%REPO%" >nul 2>&1
+
 for /f %%C in ('git rev-parse --short HEAD') do set "BEFORE=%%C"
 
 echo.
 echo   Taking the new commits...
-git pull --ff-only
+git fetch origin
+if errorlevel 1 goto failed
+git merge --ff-only origin/main
 if errorlevel 1 (
   echo.
   echo   Could not fast-forward. This copy has changes of its own, so nothing
