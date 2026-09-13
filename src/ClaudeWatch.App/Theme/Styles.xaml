@@ -50,6 +50,15 @@
 
     <!-- ============================ cards =========================== -->
 
+    <!-- The label above a group of cards. Accent and bold, so the eye can find
+         its way down a long settings page without reading every line. -->
+    <Style x:Key="SectionLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Margin" Value="2,26,0,10" />
+    </Style>
+
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Line}" />

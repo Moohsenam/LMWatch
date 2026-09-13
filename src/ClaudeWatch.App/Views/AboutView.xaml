@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="24,4,24,24" MaxWidth="720" HorizontalAlignment="Left">
+        <StackPanel Margin="24,20,24,24" MaxWidth="720" HorizontalAlignment="Left">
 
             <Border Style="{StaticResource Card}">
                 <StackPanel>
@@ -33,14 +33,6 @@
             <Border Style="{StaticResource Card}" Margin="0,14,0,0"
                     Background="{DynamicResource WarnSoft}" BorderBrush="{DynamicResource Warn}">
                 <TextBlock Text="{Binding L[About_Warning]}" Style="{StaticResource Body}" />
-            </Border>
-
-            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
-                <StackPanel>
-                    <TextBlock Text="{Binding L[About_Credit]}" Style="{StaticResource Body}" />
-                    <Button Content="{Binding L[About_Source]}" Style="{StaticResource LinkButton}"
-                            HorizontalAlignment="Left" Margin="0,10,0,0" Command="{Binding OpenSourceCommand}" />
-                </StackPanel>
             </Border>
 
         </StackPanel>

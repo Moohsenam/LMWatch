@@ -3,7 +3,28 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="24,4,24,28">
+        <StackPanel Margin="24,20,24,28">
+
+            <!-- no key: say so plainly, and make the way out one press -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,16"
+                    Background="{DynamicResource AlertSoft}" BorderBrush="{DynamicResource Alert}"
+                    Visibility="{Binding ShowLockNotice, Converter={StaticResource BoolVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding L[Lock_Title]}" Style="{StaticResource H2}"
+                                   Foreground="{DynamicResource Alert}" />
+                        <TextBlock Text="{Binding L[Lock_Body]}" Style="{StaticResource Dim}"
+                                   Margin="0,6,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{Binding L[Lock_Action]}"
+                            Style="{StaticResource PrimaryButton}" VerticalAlignment="Center"
+                            Command="{Binding NavigateCommand}" CommandParameter="Licence" />
+                </Grid>
+            </Border>
 
             <!-- clock consent -->
             <Border Style="{StaticResource Card}" Margin="0,0,0,14"
@@ -83,7 +104,8 @@
                                    MaxWidth="460" HorizontalAlignment="Left" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center"
+                                IsEnabled="{Binding GuardUsable}">
                         <Button Content="{Binding L[Btn_Open]}" Style="{StaticResource PrimaryButton}"
                                 Command="{Binding OpenClaudeCommand}" MinWidth="168" />
                         <Button Content="{Binding L[Btn_Stop]}" Style="{StaticResource DangerButton}"
@@ -231,6 +253,11 @@
             <!-- controls -->
             <Border Style="{StaticResource Card}" Margin="0,14,0,0">
                 <StackPanel>
+                    <TextBlock Text="{Binding L[Lock_Why]}" Style="{StaticResource Caption}"
+                               Foreground="{DynamicResource Alert}" Margin="0,0,0,12"
+                               Visibility="{Binding ShowLockNotice, Converter={StaticResource BoolVis}}" />
+
+                    <StackPanel IsEnabled="{Binding GuardUsable}">
                     <WrapPanel>
                         <Button Content="{Binding L[Btn_Prepare]}" Style="{StaticResource SecondaryButton}"
                                 Command="{Binding PrepareCommand}" Margin="0,0,8,8" />
@@ -258,6 +285,7 @@
                                 Command="{Binding PauseCommand}" CommandParameter="30" Margin="0,0,8,0" />
                         <Button Content="{Binding L[Pause_60]}" Style="{StaticResource SmallButton}"
                                 Command="{Binding PauseCommand}" CommandParameter="60" />
+                    </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </Border>

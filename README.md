@@ -8,16 +8,12 @@ firewall, and the clock goes back to your home zone.
 It guards both apps. A toggle at the top of the window moves between them, and
 everything follows: the rules, the colour, the wording, the pages.
 
-The rules, the state machine and the defaults started from
-[omidkorat/claude-watch](https://github.com/omidkorat/claude-watch), which does
-the same job in a PowerShell window. Same rules, no terminal, and a great deal
-more you can change.
-
 ## Install
 
-Double-click **SETUP-OR-UPDATE.cmd**. It pulls the latest code, builds it, puts
-shortcuts on your Desktop and in the Start Menu, and opens the app. That window
-is the only console you ever see.
+Double-click **UPDATE SAFECHAT.cmd**. It clones the code on a machine that has
+never had it, fast-forwards one that has, builds it, puts shortcuts on your
+Desktop and in the Start Menu, and opens the app. That window is the only console
+you ever see.
 
 It installs what it needs on its own. If the .NET SDK is missing, or only the
 runtime is there, it installs the SDK with winget, and failing that with
@@ -120,15 +116,6 @@ JSON API, and an owner panel with a dashboard, orders, keys, prices and settings
 See [server/DEPLOY.md](server/DEPLOY.md) to put it on a VPS — after the one-time
 setup it updates itself from the repo within two minutes of a push.
 
-## Token usage
-
-With an Anthropic admin key (`sk-ant-admin…`) in Settings, the Usage page reads
-your organisation's token counts and costs from Anthropic's Usage and Cost API:
-totals, a daily bar chart, and a breakdown per model over 7, 14, 30 or 90 days.
-
-A Pro or Max subscription on claude.ai has no admin key and no usage endpoint, so
-for those accounts there is nothing to read and the page says so.
-
 ## What you can change
 
 **Protection** — require a VPN, require the work zone, or either alone. Stop the
@@ -152,8 +139,9 @@ out.
 to tray, notifications (all of them or only problems), a confirmation before you
 stop the app by hand, and a Ctrl+Alt+K shortcut that stops it from anywhere.
 
-**Appearance** — dark, light, or follow Windows; six accent colours; English or
-Persian with a full right-to-left layout.
+**Appearance** — dark, light, or follow Windows; a colour per service, so Claude
+and ChatGPT never look alike; English or Persian with a full right-to-left
+layout.
 
 **Housekeeping** — how long to keep the activity log, export and import of your
 settings for a second machine, a log export, and a reset.
@@ -165,7 +153,6 @@ settings for a second machine, a log export, and a reset.
 - **Buy** — plans and prices in toman from your server.
 - **Orders** — place and track an order.
 - **Activation** — your key, what is left on it, and which machine it is on.
-- **Usage** — token counts, costs and a daily chart from an admin key.
 - **Processes** — every matching process with its PID, memory and path. Stop one
   or all of them. Matching is on the program name only, so a script that merely
   mentions Claude is never touched.
@@ -177,7 +164,7 @@ settings for a second machine, a log export, and a reset.
 
 | | |
 | --- | --- |
-| `Ctrl` + `1`…`9` | jump to a page |
+| `Ctrl` + `1`…`8` | jump to a page |
 | `Ctrl` + `Tab` | switch between Claude and ChatGPT |
 | `F5` or `Ctrl` + `R` | check again now |
 | `Ctrl` + `O` | open the guarded app |
@@ -201,7 +188,7 @@ copied across on first run, so an upgrade keeps its settings and its history.
 src/ClaudeWatch.Core    the rules, detection and system access — no UI, fully testable
 src/ClaudeWatch.App     the WPF window, tray icon, wizard and theme
 server/                 the orders service: API, public page and owner panel
-tests/ClaudeWatch.Tests 186 checks over the decision table; run with `dotnet run`
+tests/ClaudeWatch.Tests 200 checks over the decision table; run with `dotnet run`
 tools/                  setup, removal, icon generation and the offline checkers
 ```
 
@@ -215,7 +202,3 @@ dotnet run --project tests\ClaudeWatch.Tests
 dotnet publish src\ClaudeWatch.App -c Release -o build\app
 ```
 
-## Credit
-
-The rules, the state machine and the defaults come from
-[claude-watch](https://github.com/omidkorat/claude-watch) by omidkorat. MIT.

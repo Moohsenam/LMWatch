@@ -11,14 +11,6 @@ using ClaudeWatch.Core;
 
 namespace ClaudeWatch.App;
 
-/// <summary>One bar of the usage chart, already sized for the view.</summary>
-public sealed class UsageBar
-{
-    public string Label { get; init; } = string.Empty;
-    public double Height { get; init; }
-    public string Tooltip { get; init; } = string.Empty;
-}
-
 /// <summary>A plan as the order page shows it, with the label in the current language.</summary>
 public sealed class OrderPlanChoice
 {
@@ -30,17 +22,14 @@ public sealed class OrderPlanChoice
 public sealed partial class MainViewModel
 {
     public static readonly int[] GraceChoices = { 0, 10, 20, 30, 60 };
-    public static readonly int[] UsageDayChoices = { 7, 14, 30, 90 };
     public static readonly int[] IpRefreshChoices = { 30, 60, 300, 900 };
     private static readonly int[] MonthChoices = { 1, 3, 6, 12 };
     private static readonly string[] ContactKinds = { "telegram", "whatsapp", "email", "phone" };
 
-    private readonly UsageClient _usage = new();
     private readonly OrdersClient _orders = new();
     private readonly PricingClient _pricing = new();
 
     private bool _ipCopied;
-    private bool _usageBusy;
     private bool _orderBusy;
 
     // ==================================================================== IP
@@ -102,6 +91,17 @@ public sealed partial class MainViewModel
     public string KnownHomeIp => string.IsNullOrWhiteSpace(_settings.KnownHomeIp)
         ? "—"
         : _settings.KnownHomeIp;
+
+    public int IpRefreshIndex
+    {
+        get => Math.Max(0, Array.IndexOf(IpRefreshChoices, Edit.IpRefreshSeconds));
+        set
+        {
+            var index = Math.Clamp(value, 0, IpRefreshChoices.Length - 1);
+            Edit.IpRefreshSeconds = IpRefreshChoices[index];
+            Raise(nameof(IpRefreshIndex));
+        }
+    }
 
     // ================================================= the countdown warning
 
@@ -355,54 +355,6 @@ public sealed partial class MainViewModel
 
     public bool ShowFirewallChip => _settings.Active.EnableFirewallKillSwitch;
 
-    // ================================================================= usage
-
-    public ObservableCollection<UsageBar> UsageBars { get; } = new();
-
-    public ObservableCollection<UsageModel> UsageModels { get; } = new();
-
-    public bool UsageBusy
-    {
-        get => _usageBusy;
-        private set { _usageBusy = value; Raise(nameof(UsageBusy)); Raise(nameof(UsageCanLoad)); }
-    }
-
-    public bool UsageCanLoad => !_usageBusy && !string.IsNullOrWhiteSpace(Edit.AdminApiKey);
-
-    public bool UsageHasKey => !string.IsNullOrWhiteSpace(_settings.AdminApiKey);
-
-    public string UsageTotal { get; private set; } = "—";
-    public string UsageInput { get; private set; } = "—";
-    public string UsageOutput { get; private set; } = "—";
-    public string UsageCost { get; private set; } = "—";
-    public string UsageUpdated { get; private set; } = string.Empty;
-    public string UsageError { get; private set; } = string.Empty;
-    public bool UsageHasError => !string.IsNullOrWhiteSpace(UsageError);
-    public bool UsageHasData => UsageBars.Count > 0;
-
-    public int UsageDaysIndex
-    {
-        get => Math.Max(0, Array.IndexOf(UsageDayChoices, Edit.UsageDays));
-        set
-        {
-            var index = Math.Clamp(value, 0, UsageDayChoices.Length - 1);
-            Edit.UsageDays = UsageDayChoices[index];
-            _settings.UsageDays = Edit.UsageDays;
-            Raise(nameof(UsageDaysIndex));
-        }
-    }
-
-    public int IpRefreshIndex
-    {
-        get => Math.Max(0, Array.IndexOf(IpRefreshChoices, Edit.IpRefreshSeconds));
-        set
-        {
-            var index = Math.Clamp(value, 0, IpRefreshChoices.Length - 1);
-            Edit.IpRefreshSeconds = IpRefreshChoices[index];
-            Raise(nameof(IpRefreshIndex));
-        }
-    }
-
     // ================================================================ orders
 
     public ObservableCollection<OrderPlanChoice> OrderPlans { get; } = new();
@@ -467,7 +419,6 @@ public sealed partial class MainViewModel
     public RelayCommand SetupEverythingCommand { get; private set; } = null!;
     public RelayCommand InstallFirewallCommand { get; private set; } = null!;
     public RelayCommand RemoveFirewallCommand { get; private set; } = null!;
-    public RelayCommand LoadUsageCommand { get; private set; } = null!;
     public RelayCommand LoadPricesCommand { get; private set; } = null!;
     public RelayCommand SwitchServiceCommand { get; private set; } = null!;
     public RelayCommand NextServiceCommand { get; private set; } = null!;
@@ -622,7 +573,6 @@ public sealed partial class MainViewModel
             RefreshFeatureText();
         });
 
-        LoadUsageCommand = new RelayCommand(() => _ = LoadUsageAsync());
 
         LoadPricesCommand = new RelayCommand(() => _ = LoadPricesAsync());
 
@@ -671,7 +621,12 @@ public sealed partial class MainViewModel
 
         NewOrderCommand = new RelayCommand(() =>
         {
-            Draft = new OrderDraft { ContactKind = "telegram", Months = 1 };
+            Draft = new OrderDraft
+            {
+                ContactKind = "telegram",
+                Months = 1,
+                Service = _settings.ActiveServiceKey
+            };
             OrderPlaced = false;
             OrderCode = string.Empty;
             OrderError = string.Empty;
@@ -691,91 +646,7 @@ public sealed partial class MainViewModel
 
     // =============================================================== usage
 
-    private async Task LoadUsageAsync()
-    {
-        var key = Edit.AdminApiKey?.Trim() ?? string.Empty;
 
-        UsageError = string.Empty;
-        Raise(nameof(UsageError));
-        Raise(nameof(UsageHasError));
-
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            UsageError = L["Usage_Err_no_key"];
-            Raise(nameof(UsageError));
-            Raise(nameof(UsageHasError));
-            return;
-        }
-
-        UsageBusy = true;
-
-        try
-        {
-            var report = await _usage.FetchAsync(key, Edit.UsageDays).ConfigureAwait(true);
-
-            if (!report.Ok)
-            {
-                var known = L["Usage_Err_" + report.Error];
-                UsageError = known == "Usage_Err_" + report.Error ? L["Usage_Err_network"] : known;
-                UsageBars.Clear();
-                UsageModels.Clear();
-            }
-            else
-            {
-                BuildUsageView(report);
-            }
-        }
-        catch (Exception ex)
-        {
-            UsageError = ex.Message;
-        }
-        finally
-        {
-            UsageBusy = false;
-            Raise(nameof(UsageError));
-            Raise(nameof(UsageHasError));
-            Raise(nameof(UsageHasData));
-        }
-    }
-
-    private void BuildUsageView(UsageReport report)
-    {
-        UsageBars.Clear();
-        UsageModels.Clear();
-
-        var peak = report.Series.Count == 0 ? 0 : report.Series.Max(d => d.TotalTokens);
-
-        foreach (var day in report.Series)
-        {
-            var height = peak <= 0 ? 2 : Math.Max(2, 120.0 * day.TotalTokens / peak);
-            UsageBars.Add(new UsageBar
-            {
-                Label = day.Day.ToString("MM-dd", CultureInfo.InvariantCulture),
-                Height = height,
-                Tooltip = $"{day.Day:yyyy-MM-dd}\n{Compact(day.TotalTokens)} tokens"
-            });
-        }
-
-        foreach (var model in report.Models.Take(8))
-        {
-            UsageModels.Add(model);
-        }
-
-        UsageTotal = Compact(report.TotalTokens);
-        UsageInput = Compact(report.TotalInput);
-        UsageOutput = Compact(report.TotalOutput);
-        UsageCost = report.CostAvailable
-            ? report.TotalCostUsd.ToString("C2", CultureInfo.GetCultureInfo("en-US"))
-            : "—";
-        UsageUpdated = $"{L["Usage_Updated"]} {DateTime.Now:HH:mm}";
-
-        Raise(nameof(UsageTotal));
-        Raise(nameof(UsageInput));
-        Raise(nameof(UsageOutput));
-        Raise(nameof(UsageCost));
-        Raise(nameof(UsageUpdated));
-        Raise(nameof(UsageHasData));
-    }
 
     private static string Compact(long value)
     {
@@ -900,7 +771,9 @@ public sealed partial class MainViewModel
             OrderServiceName = service.BusinessName;
             OrderNotice = service.Notice;
 
-            foreach (var plan in service.Plans)
+            // Only the plans for the service being shown. Ordering ChatGPT and
+            // being offered Claude Max is the sort of thing that gets refunded.
+            foreach (var plan in service.Plans.Where(p => p.BelongsTo(_settings.ActiveServiceKey)))
             {
                 OrderPlans.Add(new OrderPlanChoice
                 {
@@ -940,6 +813,7 @@ public sealed partial class MainViewModel
         }
 
         Draft.Plan = SelectedPlan.Key;
+        Draft.Service = _settings.ActiveServiceKey;
         OrderBusy = true;
 
         try
@@ -1022,8 +896,6 @@ public sealed partial class MainViewModel
         Raise(nameof(FirewallStatus));
         Raise(nameof(FirewallBrush));
         Raise(nameof(ShowFirewallChip));
-        Raise(nameof(UsageHasKey));
-        Raise(nameof(UsageCanLoad));
         Raise(nameof(OrdersConfigured));
         Raise(nameof(OrderCanSubmit));
         Raise(nameof(SetupStatus));

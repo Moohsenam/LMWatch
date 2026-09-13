@@ -32,6 +32,42 @@ public sealed partial class MainViewModel
 
     public string ActiveServiceKey => _settings.Active.Key;
 
+    /// <summary>The first letter, for the square mark in the header.</summary>
+    public string ActiveServiceInitial
+    {
+        get
+        {
+            var name = _settings.Active.Name;
+            return string.IsNullOrWhiteSpace(name) ? "?" : name[..1].ToUpperInvariant();
+        }
+    }
+
+    /// <summary>One line under the name: what is being enforced for this service.</summary>
+    public string ActiveServiceLine
+    {
+        get
+        {
+            var parts = new List<string>();
+
+            if (_settings.EnforceVpn)
+            {
+                parts.Add(L["Svc_RuleVpn"]);
+            }
+
+            if (_settings.Active.EnforceTimeZone)
+            {
+                parts.Add(L["Svc_RuleClock"]);
+            }
+
+            if (_settings.Active.EnableFirewallKillSwitch)
+            {
+                parts.Add(L["Svc_RuleFirewall"]);
+            }
+
+            return parts.Count == 0 ? L["Svc_RuleNone"] : string.Join(" · ", parts);
+        }
+    }
+
     /// <summary>The colour the window takes on, which follows the service.</summary>
     public string EffectiveAccent => string.IsNullOrWhiteSpace(_settings.Active.Accent)
         ? _settings.AccentColor
@@ -59,6 +95,8 @@ public sealed partial class MainViewModel
         Raise(nameof(ShowServiceSwitch));
         Raise(nameof(ActiveServiceName));
         Raise(nameof(ActiveServiceKey));
+        Raise(nameof(ActiveServiceInitial));
+        Raise(nameof(ActiveServiceLine));
     }
 
     /// <summary>
@@ -161,6 +199,92 @@ public sealed partial class MainViewModel
     }
 
     public Brush LicenceBrush => LicenceOk ? Palette("Good") : Palette("Alert");
+
+    // --------------------------------------------------- the sidebar bar
+
+    /// <summary>
+    /// The one line in the sidebar: what the licence is and how long is left.
+    /// It is always there, because "am I covered" is the question people open
+    /// the window to answer.
+    /// </summary>
+    public string LicenceBarTitle
+    {
+        get
+        {
+            var status = _licence.Status;
+
+            return status.State switch
+            {
+                LicenceState.NotRequired => L["Lic_Active"],
+                LicenceState.Licensed => L["Lic_Active"],
+                LicenceState.Trial => L["Lic_Trial"],
+                _ => L["Lic_NeedsKey"]
+            };
+        }
+    }
+
+    public string LicenceBarValue
+    {
+        get
+        {
+            var status = _licence.Status;
+            var now = DateTimeOffset.UtcNow;
+
+            return status.State switch
+            {
+                LicenceState.Licensed => $"{Math.Max(0, status.DaysLeft)} {L["Lic_DaysLeft"]}",
+                LicenceState.Trial => $"{status.TrialDaysLeft(now)} {L["Lock_TrialLeft"]}",
+                LicenceState.NotRequired => string.Empty,
+                _ => L["Lock_Why"]
+            };
+        }
+    }
+
+    /// <summary>The key, shortened, or the machine name while there is no key.</summary>
+    public string LicenceBarAccount
+    {
+        get
+        {
+            var key = (_settings.LicenceKey ?? string.Empty).Trim();
+
+            if (key.Length > 0 && _licence.Status.State == LicenceState.Licensed)
+            {
+                return key;
+            }
+
+            return $"{L["Bar_Device"]}: {LicenceClient.DeviceName()}";
+        }
+    }
+
+    /// <summary>Days left as a fraction, for the little bar under the text.</summary>
+    public double LicenceBarFill
+    {
+        get
+        {
+            var status = _licence.Status;
+            var now = DateTimeOffset.UtcNow;
+
+            return status.State switch
+            {
+                // Against the key's own length, so a 30-day key and a 365-day
+                // one both start full and empty at their own pace.
+                LicenceState.Licensed when status.ExpiresAt is not null =>
+                    Math.Clamp(status.DaysLeft / 30d, 0.04, 1),
+                LicenceState.Trial when status.TrialDays > 0 =>
+                    Math.Clamp(status.TrialDaysLeft(now) / (double)status.TrialDays, 0.04, 1),
+                LicenceState.NotRequired => 1,
+                _ => 0
+            };
+        }
+    }
+
+    /// <summary>
+    /// Whether the parts of the window that enforce anything may be used. The
+    /// buy and order pages deliberately ignore this.
+    /// </summary>
+    public bool GuardUsable => LicenceOk;
+
+    public bool ShowLockNotice => !LicenceOk;
 
     public string LicenceError { get; private set; } = string.Empty;
 
@@ -291,6 +415,12 @@ public sealed partial class MainViewModel
         Raise(nameof(LicenceError));
         Raise(nameof(LicenceHasError));
         Raise(nameof(LicenceKeyInput));
+        Raise(nameof(LicenceBarTitle));
+        Raise(nameof(LicenceBarValue));
+        Raise(nameof(LicenceBarAccount));
+        Raise(nameof(LicenceBarFill));
+        Raise(nameof(GuardUsable));
+        Raise(nameof(ShowLockNotice));
     }
 
     // ==================================================== settings bindings

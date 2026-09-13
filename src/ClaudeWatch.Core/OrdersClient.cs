@@ -11,6 +11,15 @@ public sealed class OrderPlan
     public string LabelFa { get; init; } = string.Empty;
     public string PriceHint { get; init; } = string.Empty;
 
+    /// <summary>claude or chatgpt. Older servers leave it empty, which reads as Claude.</summary>
+    public string Service { get; init; } = string.Empty;
+
+    public bool BelongsTo(string? serviceKey)
+        => string.Equals(
+            string.IsNullOrWhiteSpace(Service) ? "claude" : Service,
+            string.IsNullOrWhiteSpace(serviceKey) ? "claude" : serviceKey,
+            StringComparison.OrdinalIgnoreCase);
+
     public string Display(bool persian)
     {
         var name = persian && !string.IsNullOrWhiteSpace(LabelFa) ? LabelFa : Label;
@@ -44,6 +53,13 @@ public sealed class OrderDraft
 {
     public string Plan { get; set; } = string.Empty;
     public int Months { get; set; } = 1;
+
+    /// <summary>Who to ask for when calling. The server refuses an order without it.</summary>
+    public string FullName { get; set; } = string.Empty;
+
+    /// <summary>claude or chatgpt. Filled in from whichever service is active.</summary>
+    public string Service { get; set; } = "claude";
+
     public string Email { get; set; } = string.Empty;
     public string Contact { get; set; } = string.Empty;
     public string ContactKind { get; set; } = "telegram";
@@ -121,6 +137,8 @@ public sealed class OrdersClient
             {
                 plan = draft.Plan,
                 months = draft.Months,
+                fullName = draft.FullName,
+                service = draft.Service,
                 email = draft.Email,
                 contact = draft.Contact,
                 contactKind = draft.ContactKind,

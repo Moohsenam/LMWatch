@@ -18,7 +18,6 @@ public enum AppPage
     Buy,
     Orders,
     Licence,
-    Usage,
     Processes,
     Network,
     Activity,
@@ -157,7 +156,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             Raise(nameof(IsBuy));
             Raise(nameof(IsOrders));
             Raise(nameof(IsLicence));
-            Raise(nameof(IsUsage));
             Raise(nameof(IsProcesses));
             Raise(nameof(IsNetwork));
             Raise(nameof(IsActivity));
@@ -177,7 +175,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public bool IsBuy => _page == AppPage.Buy;
     public bool IsOrders => _page == AppPage.Orders;
     public bool IsLicence => _page == AppPage.Licence;
-    public bool IsUsage => _page == AppPage.Usage;
     public bool IsProcesses => _page == AppPage.Processes;
     public bool IsNetwork => _page == AppPage.Network;
     public bool IsActivity => _page == AppPage.Activity;
@@ -238,7 +235,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         get
         {
-            var count = _snapshot?.Processes.Count ?? 0;
+            // The tile names one service, so it counts that one service.
+            var count = _snapshot?.ActiveProcesses.Count ?? 0;
             return count == 0 ? L["Claude_None"] : $"{count} {L["Claude_Running"]}";
         }
     }
@@ -247,7 +245,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         get
         {
-            var count = _snapshot?.Processes.Count ?? 0;
+            var count = _snapshot?.ActiveProcesses.Count ?? 0;
             if (count == 0)
             {
                 return Palette("TextDim");
@@ -263,7 +261,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     public bool CanOpenClaude => _snapshot?.SafeToOpenClaude == true;
 
-    public bool CanStopClaude => (_snapshot?.Processes.Count ?? 0) > 0;
+    public bool CanStopClaude => (_snapshot?.ActiveProcesses.Count ?? 0) > 0;
 
     public bool ShowClockBanner => _snapshot?.AwaitingTimeZoneConsent == true;
 
@@ -271,7 +269,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     public bool ShowPauseBanner => _snapshot?.PausedUntil is not null;
 
-    public bool ShowStandbyActions => _snapshot?.Processes.Count == 0;
+    /// <summary>
+    /// Home time can be held while the guarded app is closed. The other
+    /// service being open has nothing to do with it.
+    /// </summary>
+    public bool ShowStandbyActions => _snapshot is not null && _snapshot.ActiveProcesses.Count == 0;
 
     public bool ClockRulesSuspended => _snapshot?.TimeZoneSuspended == true;
 
@@ -486,7 +488,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public RelayCommand RemoveHelperCommand { get; private set; } = null!;
     public RelayCommand OpenDataFolderCommand { get; private set; } = null!;
     public RelayCommand BrowseClaudeCommand { get; private set; } = null!;
-    public RelayCommand OpenSourceCommand { get; private set; } = null!;
     public RelayCommand AccentCommand { get; private set; } = null!;
 
     private void BuildCommands()
@@ -690,8 +691,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             }
         });
 
-        OpenSourceCommand = new RelayCommand(() => Shell.OpenUrl("https://github.com/omidkorat/claude-watch"));
-
         AccentCommand = new RelayCommand(p =>
         {
             if (p is not string hex)
@@ -699,9 +698,22 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 return;
             }
 
-            Edit.AccentColor = hex;
+            // The colour belongs to the service being shown. Setting it on the
+            // app instead did nothing visible, because the service's own colour
+            // is what the window paints itself with, and each service keeping
+            // its own is what makes the two tell themselves apart at a glance.
             _settings.AccentColor = hex;
+            Edit.AccentColor = hex;
+
+            _settings.Active.Accent = hex;
+
+            if (Edit.ByKey(_settings.ActiveServiceKey) is { } mirror)
+            {
+                mirror.Accent = hex;
+            }
+
             Persist();
+            RefreshServiceTabs();
             ThemeChanged?.Invoke(this, EventArgs.Empty);
             RefreshBrushes();
         });

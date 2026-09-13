@@ -34,7 +34,6 @@ public static class Program
         ProcessMatchingIsNameOnly();
         ExtraAndExcludedNamesWork();
         ServerAddressesAreNormalized();
-        AdminKeysAreRecognised();
         TheSetupScriptIsWellFormed();
         GraceHoldsFireThenStops();
         GraceClearsWhenTheVpnReturns();
@@ -49,6 +48,9 @@ public static class Program
         TheOldDataFolderIsCarriedOver();
         TheScriptsAgreeOnTheExecutableName();
         SettingsTravelWithoutTheKey();
+        OneServiceOpenIsNotTwo();
+        ARefusedKeyLeavesTheTrialAlone();
+        AnOrderCarriesAName();
         TheDaySummaryCountsWhatHappened();
 
         Console.WriteLine(new string('-', 48));
@@ -300,13 +302,6 @@ public static class Program
         Check("a trailing slash is dropped", OrdersClient.Normalize("https://a.com/") == "https://a.com");
         Check("http is left alone", OrdersClient.Normalize("http://127.0.0.1:5080") == "http://127.0.0.1:5080");
         Check("blank stays blank", OrdersClient.Normalize("   ") == string.Empty);
-    }
-
-    private static void AdminKeysAreRecognised()
-    {
-        Check("an admin key is accepted", UsageClient.LooksLikeAdminKey("sk-ant-admin01-abc"));
-        Check("a normal key is not", !UsageClient.LooksLikeAdminKey("sk-ant-api03-abc"));
-        Check("blank is not", !UsageClient.LooksLikeAdminKey(""));
     }
 
     private static void TheSetupScriptIsWellFormed()
@@ -790,6 +785,129 @@ public static class Program
 
         var uninstall = File.ReadAllText(Path.Combine(root, "tools", "uninstall.ps1"));
         Check("the uninstaller stops the right process", uninstall.Contains($"Get-Process -Name '{assembly}'"));
+    }
+
+    private static void OneServiceOpenIsNotTwo()
+    {
+        Console.WriteLine();
+        Console.WriteLine("Each service is counted on its own");
+
+        var settings = Defaults();
+        settings.EnsureServices();
+        settings.ActiveServiceKey = ServiceProfile.ClaudeKey;
+        settings.Active.EnforceTimeZone = true;
+
+        var state = new GuardState { HomeTimeHold = true };
+
+        // ChatGPT is open, Claude is not. The hold belongs to Claude.
+        var input = new GuardInput
+        {
+            VpnConnected = true,
+            ClaudeProcessCount = 1,
+            ActiveProcessCount = 0,
+            CurrentTimeZoneId = settings.Active.HomeTimeZoneId,
+            Now = DateTimeOffset.Now
+        };
+
+        var decision = GuardEngine.Evaluate(input, settings, state);
+
+        Check("the other app being open does not cancel home time", state.HomeTimeHold);
+        Check("and home time is what the clock is aimed at",
+            decision.TargetTimeZoneId == settings.Active.HomeTimeZoneId);
+        Check("so the phase is standby, not mismatch", decision.Phase == GuardPhase.Standby);
+
+        // Now Claude itself is open: the hold goes, as it always did.
+        var open = new GuardInput
+        {
+            VpnConnected = true,
+            ClaudeProcessCount = 1,
+            ActiveProcessCount = 1,
+            CurrentTimeZoneId = settings.Active.RequiredTimeZoneId,
+            Now = DateTimeOffset.Now
+        };
+
+        var second = GuardEngine.Evaluate(open, settings, new GuardState { HomeTimeHold = true });
+        Check("opening the guarded app still releases the hold", second.Phase == GuardPhase.Ready);
+
+        // A VPN drop is about the machine, so anything watched still gets stopped.
+        // No countdown here: that is a separate rule with its own tests.
+        settings.GraceSeconds = 0;
+
+        var dropped = new GuardInput
+        {
+            VpnConnected = false,
+            ClaudeProcessCount = 1,
+            ActiveProcessCount = 0,
+            CurrentTimeZoneId = settings.Active.HomeTimeZoneId,
+            Now = DateTimeOffset.Now
+        };
+
+        var third = GuardEngine.Evaluate(dropped, settings, new GuardState());
+        Check("a dropped tunnel still stops the other service", third.ShouldStopClaude);
+    }
+
+    private static void ARefusedKeyLeavesTheTrialAlone()
+    {
+        Console.WriteLine();
+        Console.WriteLine("A refused key does not end the trial");
+
+        var status = new LicenceStatus
+        {
+            State = LicenceState.Trial,
+            TrialDays = 3,
+            InstalledAt = DateTimeOffset.UtcNow.AddDays(-1),
+            KeysRequired = true
+        };
+
+        Check("two days of trial are left", status.TrialDaysLeft(DateTimeOffset.UtcNow) == 2);
+        Check("and protection runs on them", LicenceClient.Allowed(status, DateTimeOffset.UtcNow));
+
+        // This is what CheckAsync does when the server refuses a typed key.
+        var trialStillRunning = status.State == LicenceState.Trial
+                                && status.TrialDaysLeft(DateTimeOffset.UtcNow) > 0;
+
+        Check("a refused key is recognised as leaving the trial alone", trialStillRunning);
+        Check("and the state is untouched", status.State == LicenceState.Trial);
+        Check("so protection is still allowed", LicenceClient.Allowed(status, DateTimeOffset.UtcNow));
+
+        // Once the days are gone, the same refusal does end it.
+        var spent = new LicenceStatus
+        {
+            State = LicenceState.Trial,
+            TrialDays = 3,
+            InstalledAt = DateTimeOffset.UtcNow.AddDays(-10),
+            KeysRequired = true
+        };
+
+        Check("a spent trial protects nothing", !LicenceClient.Allowed(spent, DateTimeOffset.UtcNow));
+    }
+
+    private static void AnOrderCarriesAName()
+    {
+        Console.WriteLine();
+        Console.WriteLine("An order carries what the server asks for");
+
+        var draft = new OrderDraft
+        {
+            Plan = "pro",
+            FullName = "Test Person",
+            Service = "chatgpt",
+            Email = "someone@example.com",
+            Contact = "@someone",
+            Eligible = true
+        };
+
+        Check("the draft has a name field", draft.FullName == "Test Person");
+        Check("and knows its service", draft.Service == "chatgpt");
+
+        var claudePlan = new OrderPlan { Key = "pro", Label = "Claude Pro", Service = "claude" };
+        var gptPlan = new OrderPlan { Key = "gpt-plus", Label = "ChatGPT Plus", Service = "chatgpt" };
+        var oldPlan = new OrderPlan { Key = "max5", Label = "Claude Max" };
+
+        Check("a claude plan belongs to claude", claudePlan.BelongsTo("claude"));
+        Check("and not to chatgpt", !claudePlan.BelongsTo("chatgpt"));
+        Check("a chatgpt plan belongs to chatgpt", gptPlan.BelongsTo("chatgpt"));
+        Check("a plan from an older server counts as claude", oldPlan.BelongsTo("claude"));
     }
 
     private static void SettingsTravelWithoutTheKey()

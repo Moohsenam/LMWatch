@@ -144,9 +144,7 @@ public sealed class GuardSettings
 
     // ---- usage report ---------------------------------------------------
     /// <summary>An Anthropic Admin API key (sk-ant-admin...). Read-only reporting.</summary>
-    public string AdminApiKey { get; set; } = string.Empty;
 
-    public int UsageDays { get; set; } = 30;
 
     // ---- orders ---------------------------------------------------------
     public string OrdersBaseUrl { get; set; } = string.Empty;
@@ -203,8 +201,6 @@ public sealed class GuardSettings
             ShowIpPanel = ShowIpPanel,
             IpRefreshSeconds = IpRefreshSeconds,
             KnownHomeIp = KnownHomeIp,
-            AdminApiKey = AdminApiKey,
-            UsageDays = UsageDays,
             OrdersBaseUrl = OrdersBaseUrl,
             StartWithWindows = StartWithWindows,
             StartMinimized = StartMinimized,

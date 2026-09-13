@@ -10,6 +10,12 @@ public sealed class GuardSnapshot
     public string VpnDetail { get; init; } = string.Empty;
     public IReadOnlyList<AdapterInfo> Adapters { get; init; } = Array.Empty<AdapterInfo>();
     public IReadOnlyList<ClaudeProcess> Processes { get; init; } = Array.Empty<ClaudeProcess>();
+
+    /// <summary>
+    /// Only the service the window is showing. The dashboard talks about one
+    /// app at a time, and counting both together made one open app read as two.
+    /// </summary>
+    public IReadOnlyList<ClaudeProcess> ActiveProcesses { get; init; } = Array.Empty<ClaudeProcess>();
     public string CurrentTimeZoneId { get; init; } = string.Empty;
     public string TargetTimeZoneId { get; init; } = string.Empty;
     public bool TimeZoneSynced { get; init; }
@@ -182,6 +188,22 @@ public sealed class GuardService : IDisposable
         Poll();
     }
 
+    /// <summary>
+    /// The processes belonging to the service the window is on. A process with
+    /// no service key is from an older snapshot and counts as the active one.
+    /// </summary>
+    private IReadOnlyList<ClaudeProcess> OnlyActive(IReadOnlyList<ClaudeProcess> processes)
+    {
+        var active = _settings.ActiveServiceKey;
+
+        return processes
+            .Where(p => string.IsNullOrEmpty(p.ServiceKey)
+                        || string.Equals(p.ServiceKey, active, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private int CountActive(IReadOnlyList<ClaudeProcess> processes) => OnlyActive(processes).Count;
+
     public StopResult StopClaude(string reason)
     {
         var result = _processes.StopAll(_settings);
@@ -257,6 +279,7 @@ public sealed class GuardService : IDisposable
                 VpnConnected = vpn.Connected,
                 VpnDetail = vpn.Detail,
                 ClaudeProcessCount = processes.Count,
+                ActiveProcessCount = CountActive(processes),
                 CurrentTimeZoneId = currentTz,
                 Now = DateTimeOffset.Now,
                 Licensed = Licensed
@@ -290,6 +313,7 @@ public sealed class GuardService : IDisposable
                         VpnConnected = vpn.Connected,
                         VpnDetail = vpn.Detail,
                         ClaudeProcessCount = processes.Count,
+                        ActiveProcessCount = CountActive(processes),
                         CurrentTimeZoneId = currentTz,
                         Now = input.Now,
                         Licensed = Licensed
@@ -318,6 +342,7 @@ public sealed class GuardService : IDisposable
                         VpnConnected = vpn.Connected,
                         VpnDetail = vpn.Detail,
                         ClaudeProcessCount = processes.Count,
+                        ActiveProcessCount = CountActive(processes),
                         CurrentTimeZoneId = currentTz,
                         Now = input.Now,
                         Licensed = Licensed
@@ -343,6 +368,7 @@ public sealed class GuardService : IDisposable
                 VpnDetail = vpn.Detail,
                 Adapters = vpn.AllAdapters,
                 Processes = processes,
+                ActiveProcesses = OnlyActive(processes),
                 CurrentTimeZoneId = currentTz,
                 TargetTimeZoneId = decision.TargetTimeZoneId,
                 TimeZoneSynced = decision.TimeZoneSynced,

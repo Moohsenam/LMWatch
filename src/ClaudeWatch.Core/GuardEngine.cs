@@ -28,9 +28,26 @@ public enum GuardPhase
 /// <summary>A single poll of the machine: what is true right now.</summary>
 public sealed class GuardInput
 {
+    private readonly int? _active;
+
     public bool VpnConnected { get; init; }
     public string VpnDetail { get; init; } = string.Empty;
+
+    /// <summary>Every watched service's processes together. The VPN rule is about the machine.</summary>
     public int ClaudeProcessCount { get; init; }
+
+    /// <summary>
+    /// Only the service the window is on. Windows has one clock, so the clock
+    /// rule belongs to the active service alone: with ChatGPT open and Claude
+    /// closed, Claude's home-time hold must still work.
+    /// Defaults to the total, which is what it was before the two were split.
+    /// </summary>
+    public int ActiveProcessCount
+    {
+        get => _active ?? ClaudeProcessCount;
+        init => _active = value;
+    }
+
     public string CurrentTimeZoneId { get; init; } = string.Empty;
     public DateTimeOffset Now { get; init; } = DateTimeOffset.Now;
 
@@ -119,7 +136,7 @@ public static class GuardEngine
             return settings.Active.HomeTimeZoneId;
         }
 
-        if (state.HomeTimeHold && input.ClaudeProcessCount == 0)
+        if (state.HomeTimeHold && input.ActiveProcessCount == 0)
         {
             return settings.Active.HomeTimeZoneId;
         }
@@ -129,8 +146,9 @@ public static class GuardEngine
 
     public static GuardDecision Evaluate(GuardInput input, GuardSettings settings, GuardState state)
     {
-        // Opening Claude releases a home-time hold: the user clearly wants to work.
-        if (input.ClaudeProcessCount > 0)
+        // Opening the guarded app releases a home-time hold: the user clearly
+        // wants to work. The other service being open says nothing about this one.
+        if (input.ActiveProcessCount > 0)
         {
             state.HomeTimeHold = false;
         }
@@ -166,7 +184,7 @@ public static class GuardEngine
         }
         else if (timeZoneEnforced
                  && input.VpnConnected
-                 && input.ClaudeProcessCount > 0
+                 && input.ActiveProcessCount > 0
                  && !string.Equals(input.CurrentTimeZoneId, settings.Active.RequiredTimeZoneId, StringComparison.OrdinalIgnoreCase))
         {
             stop = true;
@@ -256,7 +274,7 @@ public static class GuardEngine
             phase = GuardPhase.Blocked;
             headline = "Head_Blocked";
         }
-        else if (timeZoneEnforced && state.HomeTimeHold && input.ClaudeProcessCount == 0 && synced)
+        else if (timeZoneEnforced && state.HomeTimeHold && input.ActiveProcessCount == 0 && synced)
         {
             phase = GuardPhase.Standby;
             headline = "Head_Standby";

@@ -273,13 +273,23 @@ public sealed class LicenceClient
 
             Status.LastError = error;
 
-            Status.State = error switch
+            // A refused key says nothing about the trial. Typing a code wrongly,
+            // or trying one that belongs to someone else, used to end the days
+            // the install still had, which is the opposite of what a trial is
+            // for. While it is still running, a failed check leaves it alone.
+            var trialStillRunning = Status.State == LicenceState.Trial
+                                    && Status.TrialDaysLeft(DateTimeOffset.UtcNow) > 0;
+
+            if (!trialStillRunning)
             {
-                "expired" => LicenceState.Expired,
-                "revoked" => LicenceState.Revoked,
-                "wrong_device" => LicenceState.WrongDevice,
-                _ => Status.State == LicenceState.Licensed ? LicenceState.Licensed : LicenceState.NeedsKey
-            };
+                Status.State = error switch
+                {
+                    "expired" => LicenceState.Expired,
+                    "revoked" => LicenceState.Revoked,
+                    "wrong_device" => LicenceState.WrongDevice,
+                    _ => Status.State == LicenceState.Licensed ? LicenceState.Licensed : LicenceState.NeedsKey
+                };
+            }
 
             Save();
             return (false, error);

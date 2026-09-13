@@ -22,11 +22,10 @@
         <KeyBinding Modifiers="Ctrl" Key="D2" Command="{Binding NavigateCommand}" CommandParameter="Buy" />
         <KeyBinding Modifiers="Ctrl" Key="D3" Command="{Binding NavigateCommand}" CommandParameter="Orders" />
         <KeyBinding Modifiers="Ctrl" Key="D4" Command="{Binding NavigateCommand}" CommandParameter="Licence" />
-        <KeyBinding Modifiers="Ctrl" Key="D5" Command="{Binding NavigateCommand}" CommandParameter="Usage" />
-        <KeyBinding Modifiers="Ctrl" Key="D6" Command="{Binding NavigateCommand}" CommandParameter="Processes" />
-        <KeyBinding Modifiers="Ctrl" Key="D7" Command="{Binding NavigateCommand}" CommandParameter="Network" />
-        <KeyBinding Modifiers="Ctrl" Key="D8" Command="{Binding NavigateCommand}" CommandParameter="Activity" />
-        <KeyBinding Modifiers="Ctrl" Key="D9" Command="{Binding NavigateCommand}" CommandParameter="Settings" />
+        <KeyBinding Modifiers="Ctrl" Key="D5" Command="{Binding NavigateCommand}" CommandParameter="Processes" />
+        <KeyBinding Modifiers="Ctrl" Key="D6" Command="{Binding NavigateCommand}" CommandParameter="Network" />
+        <KeyBinding Modifiers="Ctrl" Key="D7" Command="{Binding NavigateCommand}" CommandParameter="Activity" />
+        <KeyBinding Modifiers="Ctrl" Key="D8" Command="{Binding NavigateCommand}" CommandParameter="Settings" />
         <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
         <KeyBinding Modifiers="Ctrl" Key="R" Command="{Binding RefreshCommand}" />
         <KeyBinding Modifiers="Ctrl" Key="O" Command="{Binding OpenClaudeCommand}" />
@@ -85,27 +84,6 @@
                             </StackPanel>
                         </RadioButton>
 
-                        <ItemsControl ItemsSource="{Binding ServiceTabs}" Margin="14,0,14,14"
-                                      Visibility="{Binding ShowServiceSwitch, Converter={StaticResource BoolVis}}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Rows="1" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Button Style="{StaticResource ServiceTab}"
-                                            Content="{Binding Name}"
-                                            Tag="{Binding Selected}"
-                                            BorderBrush="{Binding Accent}"
-                                            Visibility="{Binding Enabled, Converter={StaticResource BoolVis}}"
-                                            Command="{Binding DataContext.SwitchServiceCommand,
-                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding Key}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
                         <RadioButton GroupName="nav" Style="{StaticResource NavItem}"
                                      IsChecked="{Binding IsBuy, Mode=OneWay}"
                                      Command="{Binding NavigateCommand}" CommandParameter="Buy">
@@ -136,17 +114,6 @@
                                       Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
                                       Data="M14,3 A6,6 0 1 0 8.6,11.6 L10,13 L10,15 L12,15 L12,17 L14,17 L14,19 L18,19 L21,16 L14,9 A6,6 0 0 0 14,3 Z M16.5,6 A1.5,1.5 0 1 1 16.5,9 A1.5,1.5 0 0 1 16.5,6 Z" />
                                 <TextBlock Text="{Binding L[Nav_Licence]}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-
-                        <RadioButton GroupName="nav" Style="{StaticResource NavItem}"
-                                     IsChecked="{Binding IsUsage, Mode=OneWay}"
-                                     Command="{Binding NavigateCommand}" CommandParameter="Usage">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Width="15" Height="15" Stretch="Uniform" Margin="2,0,11,0"
-                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                      Data="M3,13 H7 V21 H3 Z M10,7 H14 V21 H10 Z M17,3 H21 V21 H17 Z" />
-                                <TextBlock Text="{Binding L[Nav_Usage]}" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
 
@@ -206,8 +173,44 @@
                         </RadioButton>
                     </StackPanel>
 
-                    <!-- footer: state pill and the two clocks -->
+                    <!-- footer: licence, state pill and the two clocks -->
                     <StackPanel Grid.Row="2" Margin="16,0,16,16">
+
+                        <!-- What the licence is and how long is left. Clicking it
+                             goes to the page that can do something about it. -->
+                        <Button Style="{StaticResource ButtonBase}" Padding="0" Margin="0,0,0,12"
+                                HorizontalContentAlignment="Stretch" Background="Transparent"
+                                Command="{Binding NavigateCommand}" CommandParameter="Licence">
+                            <Border Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Line}"
+                                    BorderThickness="1" CornerRadius="9" Padding="12,10">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding LicenceBarTitle}"
+                                                   FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{Binding LicenceBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LicenceBarValue}"
+                                                   Style="{StaticResource Caption}" FontSize="11"
+                                                   Margin="8,0,0,0" />
+                                    </Grid>
+
+                                    <ProgressBar Height="3" Minimum="0" Maximum="1" Margin="0,8,0,0"
+                                                 Value="{Binding LicenceBarFill, Mode=OneWay}"
+                                                 Foreground="{Binding LicenceBrush}"
+                                                 Background="{DynamicResource Line}"
+                                                 BorderThickness="0" />
+
+                                    <TextBlock Text="{Binding LicenceBarAccount}" Style="{StaticResource Caption}"
+                                               FontSize="10.5" Margin="0,7,0,0"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Border>
+                        </Button>
+
                         <Border Background="{Binding StatusSoftBrush}" CornerRadius="9" Padding="12,10">
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse Width="9" Height="9" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
@@ -242,6 +245,7 @@
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="46" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -268,13 +272,63 @@
                     </StackPanel>
                 </Grid>
 
+                <!-- Which app is being guarded, said loudly. The whole strip takes
+                     that service's colour, so switching is impossible to miss. -->
+                <Border Grid.Row="1" Background="{DynamicResource AccentSoft}"
+                        BorderBrush="{DynamicResource Accent}" BorderThickness="0,0,0,2"
+                        Padding="24,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Width="38" Height="38" CornerRadius="10"
+                                Background="{DynamicResource Accent}" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ActiveServiceInitial}" FontSize="19" FontWeight="Bold"
+                                       Foreground="{DynamicResource OnAccent}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" Margin="14,0,14,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ActiveServiceName}" FontSize="17" FontWeight="Bold"
+                                       Foreground="{DynamicResource Accent}" />
+                            <TextBlock Text="{Binding ActiveServiceLine}" Style="{StaticResource Caption}"
+                                       Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+
+                        <ItemsControl Grid.Column="2" ItemsSource="{Binding ServiceTabs}"
+                                      VerticalAlignment="Center"
+                                      Visibility="{Binding ShowServiceSwitch, Converter={StaticResource BoolVis}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource ServiceTab}"
+                                            Content="{Binding Name}"
+                                            Tag="{Binding Selected}"
+                                            MinWidth="104"
+                                            BorderBrush="{Binding Accent}"
+                                            Visibility="{Binding Enabled, Converter={StaticResource BoolVis}}"
+                                            Command="{Binding DataContext.SwitchServiceCommand,
+                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding Key}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </Border>
+
                 <!-- pages -->
-                <Grid Grid.Row="1">
+                <Grid Grid.Row="2">
                     <views:DashboardView Visibility="{Binding IsDashboard, Converter={StaticResource BoolVis}}" />
                     <views:BuyView Visibility="{Binding IsBuy, Converter={StaticResource BoolVis}}" />
                     <views:OrdersView Visibility="{Binding IsOrders, Converter={StaticResource BoolVis}}" />
                     <views:LicenceView Visibility="{Binding IsLicence, Converter={StaticResource BoolVis}}" />
-                    <views:UsageView Visibility="{Binding IsUsage, Converter={StaticResource BoolVis}}" />
                     <views:ProcessesView Visibility="{Binding IsProcesses, Converter={StaticResource BoolVis}}" />
                     <views:NetworkView Visibility="{Binding IsNetwork, Converter={StaticResource BoolVis}}" />
                     <views:ActivityView Visibility="{Binding IsActivity, Converter={StaticResource BoolVis}}" />
