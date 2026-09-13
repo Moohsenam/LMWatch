@@ -213,8 +213,12 @@ public partial class App : Application
         _window.Show();
         _window.WindowState = WindowState.Normal;
         _window.Activate();
-        _window.Topmost = true;
-        _window.Topmost = false;
+
+        // No top-most flick to force the window forward. It works, and it also
+        // reorders the top-most band underneath whatever is full-screen at the
+        // time, which is how a full-screen app ends up stuck above everything.
+        // A taskbar flash when Windows refuses the foreground is the cheaper
+        // failure.
     }
 
     public void ExitApp()
