@@ -18,36 +18,64 @@ sudo -E bash bootstrap.sh
 ```
 
 It installs git, the .NET 8 SDK, clones the repo, builds, writes the systemd
-service, puts **safechat.ir** on HTTPS, installs the two-minute auto-update
-timer, and prints the admin password it generated on the first run.
+service, installs the two-minute auto-update timer, and prints the admin
+password it generated on the first run.
 
-Three things it will take from the environment if you set them:
+It sets up two names, not one:
+
+| Name | What answers |
+| --- | --- |
+| **app.safechat.ir** | the service: order form, key lookup, the API the desktop app calls, `/admin.html` |
+| **safechat.ir** | the landing page, served as plain files out of `/var/www/safechat` |
+
+The root is deliberately not the service. It is a folder you copy a site into,
+and until there is one it holds a placeholder that links to the order page.
+Copying the real site over it is the whole deployment; the script writes that
+file once and never touches the folder again.
+
+Both names need an A record pointing at the server before you run it, or the
+certificates cannot be issued. The script checks and says which one is missing
+rather than letting certbot find out.
+
+What it takes from the environment:
 
 ```bash
-export DOMAIN=orders.example.com        # a different name
+export DOMAIN=orders.example.com        # a different name for the service
 export DOMAIN=                          # none at all: plain HTTP on the port
+export SITE_DOMAIN=                     # skip the landing page entirely
+export SITE_ROOT=/var/www/safechat      # where the landing page's files live
 export CW_PORT=5080                     # the port the service itself listens on
 export CERT_EMAIL=you@example.com       # expiry warnings from the certificate authority
 ```
 
-Point the domain's A record at the server before running it, or the certificate
-cannot be issued. The script says so rather than letting certbot find out.
-
 ### A server that already has sites on 443
 
-It keeps them. The script looks at what is answering on 443 and adds one site
-to it instead of replacing anything:
+It keeps them. The script looks at what is answering on 443 and adds its two
+sites to it instead of replacing anything:
 
 | Already there | What happens |
 | --- | --- |
-| nginx | a vhost in `sites-available/safechat` (or `conf.d/safechat.conf`), then `certbot --nginx` |
-| Apache | a vhost in `sites-available/safechat.conf` (or `conf.d/`), then `certbot --apache` |
-| Caddy | `/etc/caddy/sites/safechat.caddyfile`, imported from the existing Caddyfile |
+| nginx | both vhosts in one file, `sites-available/safechat` (or `conf.d/safechat.conf`), then `certbot --nginx` |
+| Apache | both vhosts in `sites-available/safechat.conf` (or `conf.d/`), then `certbot --apache` |
+| Caddy | `/etc/caddy/sites/safechat.caddyfile`, reached by one `import` line added to the existing Caddyfile |
 | nothing | Caddy is installed and takes 443 |
-| something else | nothing is touched; it prints the one proxy rule to add by hand |
+| something else | nothing is touched; it prints the proxy rule and the folder to wire up by hand |
 
-Your other two domains are untouched in every one of those rows. Certbot only
-ever writes the block for the name you gave it.
+Your other two domains are untouched in every one of those rows. Nothing
+already in the config is rewritten, and certbot only ever writes the blocks for
+the names you gave it.
+
+### Putting the landing page up
+
+`/var/www/safechat` is a plain folder of files. When the site exists, copy it in:
+
+```bash
+scp -r ./landing/* root@your-server:/var/www/safechat/
+```
+
+No restart, no reload, no config. The placeholder is `index.html`, so copying
+your own `index.html` over it is what replaces it. The certificate is already
+there from the first bootstrap run.
 
 ### Changing the port
 
@@ -216,9 +244,16 @@ notice.
 If nothing is on 443 yet, `/etc/caddy/sites/safechat.caddyfile`:
 
 ```
-safechat.ir {
+app.safechat.ir {
     encode gzip
     reverse_proxy 127.0.0.1:5080
+}
+
+safechat.ir {
+    encode gzip
+    root * /var/www/safechat
+    file_server
+    try_files {path} {path}/ /index.html
 }
 ```
 
@@ -232,13 +267,13 @@ import /etc/caddy/sites/*.caddyfile
 sudo systemctl reload caddy
 ```
 
-If nginx is already serving other domains, add one file instead —
+If nginx is already serving other domains, add one file instead,
 `/etc/nginx/sites-available/safechat`:
 
 ```nginx
 server {
     listen 80;
-    server_name safechat.ir;
+    server_name app.safechat.ir;
 
     location / {
         proxy_pass http://127.0.0.1:5080;
@@ -248,15 +283,27 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+server {
+    listen 80;
+    server_name safechat.ir www.safechat.ir;
+
+    root /var/www/safechat;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
 ```
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/safechat /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d safechat.ir
+sudo certbot --nginx -d app.safechat.ir -d safechat.ir
 ```
 
-Certbot adds the 443 block to that one file and leaves your other sites alone.
+Certbot adds the 443 blocks to that one file and leaves your other sites alone.
 
 The service itself listens on `127.0.0.1` only, so nothing reaches it except
 through the web server in front.

@@ -4,7 +4,7 @@
 # On a plain server bootstrap.sh writes its own copy of this block into
 # /etc/caddy/sites/safechat.caddyfile instead, so sites already on 443 are
 # left exactly as they are.
-safechat.ir {
+app.safechat.ir {
     encode gzip
     reverse_proxy orders:5080
 }

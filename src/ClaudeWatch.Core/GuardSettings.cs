@@ -153,8 +153,11 @@ public sealed class GuardSettings
     /// own address, so a fresh install already points at it and nobody has to
     /// be told what to type. Anyone running their own server replaces it in
     /// Settings, and that choice is kept.
+    ///
+    /// The subdomain is deliberate: safechat.ir itself is the landing page
+    /// people arrive at, and the service sits beside it rather than under it.
     /// </summary>
-    public const string DefaultOrdersBaseUrl = "https://safechat.ir";
+    public const string DefaultOrdersBaseUrl = "https://app.safechat.ir";
 
     public string OrdersBaseUrl { get; set; } = DefaultOrdersBaseUrl;
 
