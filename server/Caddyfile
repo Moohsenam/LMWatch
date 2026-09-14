@@ -1,5 +1,10 @@
-# Replace the domain. Everything else can stay as it is.
-orders.example.com {
+# For the Docker deployment. Caddy gets the certificate by itself; the name
+# below only has to point at this machine.
+#
+# On a plain server bootstrap.sh writes its own copy of this block into
+# /etc/caddy/sites/safechat.caddyfile instead, so sites already on 443 are
+# left exactly as they are.
+safechat.ir {
     encode gzip
     reverse_proxy orders:5080
 }

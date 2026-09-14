@@ -10,7 +10,6 @@ On the server, as a user who can sudo:
 
 ```bash
 export GH_TOKEN=github_pat_...          # needs Contents: read on the repo
-export DOMAIN=orders.example.com        # leave this out for plain HTTP on :5080
 
 curl -sSL -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
   https://api.github.com/repos/Moohsenam/LMWatch/contents/server/bootstrap.sh -o bootstrap.sh
@@ -19,12 +18,56 @@ sudo -E bash bootstrap.sh
 ```
 
 It installs git, the .NET 8 SDK, clones the repo, builds, writes the systemd
-service, sets up HTTPS with Caddy when DOMAIN is given, installs the
-two-minute auto-update timer, and prints the admin password it generated on
-the first run.
+service, puts **safechat.ir** on HTTPS, installs the two-minute auto-update
+timer, and prints the admin password it generated on the first run.
 
-Point the domain's DNS at the server before running it, or the certificate
-cannot be issued.
+Three things it will take from the environment if you set them:
+
+```bash
+export DOMAIN=orders.example.com        # a different name
+export DOMAIN=                          # none at all: plain HTTP on the port
+export CW_PORT=5080                     # the port the service itself listens on
+export CERT_EMAIL=you@example.com       # expiry warnings from the certificate authority
+```
+
+Point the domain's A record at the server before running it, or the certificate
+cannot be issued. The script says so rather than letting certbot find out.
+
+### A server that already has sites on 443
+
+It keeps them. The script looks at what is answering on 443 and adds one site
+to it instead of replacing anything:
+
+| Already there | What happens |
+| --- | --- |
+| nginx | a vhost in `sites-available/safechat` (or `conf.d/safechat.conf`), then `certbot --nginx` |
+| Apache | a vhost in `sites-available/safechat.conf` (or `conf.d/`), then `certbot --apache` |
+| Caddy | `/etc/caddy/sites/safechat.caddyfile`, imported from the existing Caddyfile |
+| nothing | Caddy is installed and takes 443 |
+| something else | nothing is touched; it prints the one proxy rule to add by hand |
+
+Your other two domains are untouched in every one of those rows. Certbot only
+ever writes the block for the name you gave it.
+
+### Changing the port
+
+One file, `/etc/cw-orders.conf`:
+
+```
+CW_DATA=/var/lib/cw-orders
+CW_PORT=5080
+CW_URLS=http://127.0.0.1:5080
+```
+
+```bash
+sudo nano /etc/cw-orders.conf
+sudo systemctl restart cw-orders
+```
+
+The service, the health check and the update timer all read that file, so
+nothing else needs editing. The web server in front still points at the old
+port, though — change `127.0.0.1:5080` in its config too, or just re-run
+`bootstrap.sh` with `CW_PORT` set and it rewrites both.
 
 **Later updates need nothing.** Push, wait two minutes. To watch it happen:
 
@@ -170,21 +213,53 @@ notice.
 
 ### 5. HTTPS
 
-`/etc/caddy/Caddyfile`, with your own domain:
+If nothing is on 443 yet, `/etc/caddy/sites/safechat.caddyfile`:
 
 ```
-orders.example.com {
+safechat.ir {
     encode gzip
     reverse_proxy 127.0.0.1:5080
 }
+```
+
+and one line in `/etc/caddy/Caddyfile` so it is read:
+
+```
+import /etc/caddy/sites/*.caddyfile
 ```
 
 ```bash
 sudo systemctl reload caddy
 ```
 
+If nginx is already serving other domains, add one file instead —
+`/etc/nginx/sites-available/safechat`:
+
+```nginx
+server {
+    listen 80;
+    server_name safechat.ir;
+
+    location / {
+        proxy_pass http://127.0.0.1:5080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/safechat /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d safechat.ir
+```
+
+Certbot adds the 443 block to that one file and leaves your other sites alone.
+
 The service itself listens on `127.0.0.1` only, so nothing reaches it except
-through Caddy.
+through the web server in front.
 
 ---
 

@@ -31,8 +31,10 @@ settings.
 ## First run
 
 A short wizard asks four things and then gets out of the way: your language,
-which of the two apps to guard, the two time zones, and — if you have one — your
-server address and key. Everything it asks can be changed later in Settings.
+which of the two apps to guard, the two time zones, and your key. The server
+address is already filled in with `safechat.ir`, so buying and activation work
+out of the box; anyone running their own server replaces it there or in
+Settings. Everything it asks can be changed later.
 
 ## Activation
 

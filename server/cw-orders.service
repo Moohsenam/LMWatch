@@ -1,6 +1,9 @@
 # /etc/systemd/system/cw-orders.service
+#
+# The port, the data folder and the bind address all live in /etc/cw-orders.conf.
+# Change it there, then:  systemctl restart cw-orders
 [Unit]
-Description=Claude Watch orders
+Description=SafeChat orders
 After=network.target
 
 [Service]
@@ -8,9 +11,7 @@ Type=simple
 User=cworders
 WorkingDirectory=/opt/cw-orders
 ExecStart=/usr/bin/dotnet /opt/cw-orders/ClaudeWatch.Orders.dll
-Environment=CW_DATA=/var/lib/cw-orders
-Environment=CW_URLS=http://127.0.0.1:5080
-Environment=DOTNET_EnableDiagnostics=0
+EnvironmentFile=/etc/cw-orders.conf
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

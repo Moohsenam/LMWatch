@@ -147,7 +147,16 @@ public sealed class GuardSettings
 
 
     // ---- orders ---------------------------------------------------------
-    public string OrdersBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where the app looks for prices, orders and keys. This is the service's
+    /// own address, so a fresh install already points at it and nobody has to
+    /// be told what to type. Anyone running their own server replaces it in
+    /// Settings, and that choice is kept.
+    /// </summary>
+    public const string DefaultOrdersBaseUrl = "https://safechat.ir";
+
+    public string OrdersBaseUrl { get; set; } = DefaultOrdersBaseUrl;
 
     // ---- application --------------------------------------------------
     public bool StartWithWindows { get; set; } = true;

@@ -7,7 +7,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 var dataRoot = Environment.GetEnvironmentVariable("CW_DATA")
                ?? Path.Combine(AppContext.BaseDirectory, "data");
-var urls = Environment.GetEnvironmentVariable("CW_URLS") ?? "http://127.0.0.1:5080";
+// One place decides the port. CW_URLS still wins when it is set, so an install
+// that already pins a full address keeps working untouched.
+var port = Environment.GetEnvironmentVariable("CW_PORT") is { Length: > 0 } p
+           && int.TryParse(p, out var parsed) && parsed is > 0 and < 65536
+    ? parsed
+    : 5080;
+
+var urls = Environment.GetEnvironmentVariable("CW_URLS") is { Length: > 0 } bind
+    ? bind
+    : $"http://127.0.0.1:{port}";
 
 var store = new Store(dataRoot);
 var auth = new Auth(store);

@@ -225,6 +225,8 @@ public sealed class SettingsStore
             settings.AccentColor = "#D97757";
         }
 
+        settings.OrdersBaseUrl = NormalizeBaseUrl(settings.OrdersBaseUrl);
+
         if (settings.Language is not ("en" or "fa"))
         {
             settings.Language = "en";
@@ -234,6 +236,20 @@ public sealed class SettingsStore
         settings.IgnoredAdapters = Clean(settings.IgnoredAdapters);
 
         return settings;
+    }
+
+    /// <summary>
+    /// An address the app can actually call. An empty one falls back to the
+    /// service's own server, so an install from before there was a default
+    /// picks it up rather than sitting there with no orders page. A bare name
+    /// like "safechat.ir" gets https, and a trailing slash is dropped so the
+    /// paths appended to it never double up.
+    /// </summary>
+    public static string NormalizeBaseUrl(string? value)
+    {
+        var text = OrdersClient.Normalize(value ?? string.Empty);
+
+        return text.Length == 0 ? GuardSettings.DefaultOrdersBaseUrl : text;
     }
 
     private static List<string> Clean(List<string>? values)

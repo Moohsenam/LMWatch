@@ -302,6 +302,21 @@ public static class Program
         Check("a trailing slash is dropped", OrdersClient.Normalize("https://a.com/") == "https://a.com");
         Check("http is left alone", OrdersClient.Normalize("http://127.0.0.1:5080") == "http://127.0.0.1:5080");
         Check("blank stays blank", OrdersClient.Normalize("   ") == string.Empty);
+
+        // The settings layer has one more rule than the client: nothing in it
+        // means the service's own server, so a fresh install already works and
+        // an old one that never had an address picks it up on load.
+        Check("a fresh install points at the service",
+            new GuardSettings().OrdersBaseUrl == GuardSettings.DefaultOrdersBaseUrl);
+        Check("an empty address becomes the default",
+            SettingsStore.NormalizeBaseUrl("") == GuardSettings.DefaultOrdersBaseUrl);
+        Check("the default is a real https address",
+            GuardSettings.DefaultOrdersBaseUrl.StartsWith("https://", StringComparison.Ordinal));
+        Check("someone else's server is kept",
+            SettingsStore.NormalizeBaseUrl("orders.mine.com/") == "https://orders.mine.com");
+        Check("settings loaded with no address get the default",
+            SettingsStore.Sanitize(new GuardSettings { OrdersBaseUrl = "  " }).OrdersBaseUrl
+                == GuardSettings.DefaultOrdersBaseUrl);
     }
 
     private static void TheSetupScriptIsWellFormed()
