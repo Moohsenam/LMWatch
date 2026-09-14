@@ -282,8 +282,65 @@ check "issuing against a missing order is a 404" 404 \
 contains "plans say which service they belong to" '"service"' "$(curl -s "$BASE/api/service")"
 contains "and so does the price list" '"service"' "$(curl -s "$BASE/api/pricing")"
 
+# ---------------------------------------------------------- app releases
+
+echo
+echo "App releases"
+
+SETUP="$(mktemp)"
+head -c 200000 /dev/urandom > "$SETUP"
+SETUP_HASH="$(sha256sum "$SETUP" | cut -d' ' -f1)"
+
+contains "nothing is offered before anything is uploaded" '"version":""' "$(curl -s "$BASE/api/app/latest")"
+check "and /download has nothing to give" 404 "$(status "$BASE/download")"
+
+check "uploading needs a session" 401 \
+  "$(status -X PUT "$BASE/api/admin/releases/2.0.0" -H 'X-CW: 1' --data-binary @"$SETUP")"
+check "and the header that says it came from our own page" 400 \
+  "$(status -b "$JAR" -X PUT "$BASE/api/admin/releases/2.0.0" --data-binary @"$SETUP")"
+
+UP="$(curl -s -b "$JAR" -X PUT "$BASE/api/admin/releases/2.0.0?notes=first" -H 'X-CW: 1' \
+  -H 'Content-Type: application/octet-stream' --data-binary @"$SETUP")"
+contains "a build uploads" '"ok":true' "$UP"
+contains "and the server hashed exactly what was sent" "$SETUP_HASH" "$UP"
+
+LATEST="$(curl -s "$BASE/api/app/latest")"
+contains "it is what the app is now offered" '"version":"2.0.0"' "$LATEST"
+contains "with the notes that came with it" '"notes":"first"' "$LATEST"
+contains "and the hash to check the download against" "$SETUP_HASH" "$LATEST"
+
+GOT="$(mktemp)"
+curl -sL -o "$GOT" "$BASE/download"
+check "the download is byte-for-byte the upload" "$SETUP_HASH" "$(sha256sum "$GOT" | cut -d' ' -f1)"
+rm -f "$GOT"
+
+curl -s -o /dev/null -b "$JAR" -X PUT "$BASE/api/admin/releases/2.0.1" -H 'X-CW: 1' \
+  -H 'Content-Type: application/octet-stream' --data-binary @"$SETUP"
+curl -s -o /dev/null -b "$JAR" -X PUT "$BASE/api/admin/releases/2.0.10" -H 'X-CW: 1' \
+  -H 'Content-Type: application/octet-stream' --data-binary @"$SETUP"
+contains "versions sort by number, so 2.0.10 beats 2.0.1" '"version":"2.0.10"' "$(curl -s "$BASE/api/app/latest")"
+
+curl -s -o /dev/null -b "$JAR" -X POST "$BASE/api/admin/releases/2.0.10/live?on=false" -H 'X-CW: 1'
+contains "a withdrawn build steps back to the one before it" '"version":"2.0.1"' "$(curl -s "$BASE/api/app/latest")"
+check "and cannot be downloaded any more" 404 "$(status "$BASE/download/2.0.10")"
+
+contains "a version that is not a version is refused" 'bad_version' \
+  "$(curl -s -b "$JAR" -X PUT "$BASE/api/admin/releases/1.0-beta" -H 'X-CW: 1' --data-binary @"$SETUP")"
+contains "and so is one trying to climb out of the folder" 'bad_version' \
+  "$(curl -s -b "$JAR" -X PUT "$BASE/api/admin/releases/..%2F..%2Fetc" -H 'X-CW: 1' --data-binary @"$SETUP")"
+
+check "an empty upload is not a release" 400 \
+  "$(status -b "$JAR" -X PUT "$BASE/api/admin/releases/3.0.0" -H 'X-CW: 1' --data-binary '')"
+
+check "deleting needs a session" 401 "$(status -X DELETE "$BASE/api/admin/releases/2.0.0" -H 'X-CW: 1')"
+check "a build can be deleted" 200 "$(status -b "$JAR" -X DELETE "$BASE/api/admin/releases/2.0.0" -H 'X-CW: 1')"
+check "and deleting it twice is a 404" 404 "$(status -b "$JAR" -X DELETE "$BASE/api/admin/releases/2.0.0" -H 'X-CW: 1')"
+
+rm -f "$SETUP"
+
 check "logging out clears the session" 200 "$(status -b "$JAR" -c "$JAR" -X POST "$BASE/api/admin/logout" -H 'X-CW: 1')"
 check "the list is shut again" 401 "$(status -b "$JAR" "$BASE/api/admin/orders")"
+check "and so is the release list" 401 "$(status -b "$JAR" "$BASE/api/admin/releases")"
 
 echo "------------------------------------------------"
 if [ "$FAIL" -eq 0 ]; then

@@ -42,6 +42,7 @@
     <button data-tab="orders">سفارش‌ها</button>
     <button data-tab="keys">کلیدها</button>
     <button data-tab="pricing">قیمت‌ها</button>
+    <button data-tab="releases">نسخه‌ها</button>
     <button data-tab="settings">تنظیمات</button>
   </div>
 
@@ -240,6 +241,51 @@
     <button class="primary" id="savePricing">ذخیره قیمت‌ها</button>
   </div>
 
+  <!-- ----------------------------- releases ----------------------------- -->
+  <div id="tab-releases" class="hidden">
+    <section class="card">
+      <h2 class="section">نسخه فعلی</h2>
+      <p class="hint">
+        هر اپ نصب‌شده چند ساعت یک‌بار این را می‌پرسد و اگر نسخه‌اش قدیمی‌تر باشد به کاربر خبر می‌دهد.
+        تا کاربر خودش نزند چیزی نصب نمی‌شود.
+      </p>
+
+      <div id="relState" class="banner" style="margin-top:14px"></div>
+
+      <label class="field"><span>لینک دانلود برای سایت و مشتری</span>
+        <input type="text" id="relLink" dir="ltr" readonly></label>
+    </section>
+
+    <section class="card">
+      <h2 class="section">آپلود نسخه جدید</h2>
+      <p class="hint">
+        فایل نصاب را با <code>tools\release.ps1</code> بسازید. همان اسکریپت خودش آپلود هم می‌کند،
+        و این فرم برای وقتی است که فایل را جدا ساخته‌اید.
+      </p>
+
+      <div class="keygrid">
+        <label class="field"><span>شماره نسخه</span>
+          <input type="text" id="relVersion" dir="ltr" placeholder="1.1.0"></label>
+        <label class="field"><span>فایل نصاب</span>
+          <input type="file" id="relFile" accept=".exe"></label>
+      </div>
+
+      <label class="field"><span>چه چیزی عوض شده (یک خط، کاربر همین را می‌بیند)</span>
+        <input type="text" id="relNotes" placeholder="سریع‌تر شدن اجرا و رفع چند ایراد"></label>
+
+      <label class="check" style="margin:10px 0 14px">
+        <input type="checkbox" id="relDraft">
+        <span>فعلاً خاموش بماند و به کسی پیشنهاد نشود</span>
+      </label>
+
+      <button class="primary" id="relUpload">آپلود کن</button>
+      <div id="relProgress" class="banner hidden" style="margin-top:14px"></div>
+    </section>
+
+    <div class="list" id="relList"></div>
+    <p class="hint hidden" id="relEmpty" style="text-align:center;padding:30px">هنوز نسخه‌ای آپلود نشده.</p>
+  </div>
+
   <!-- ----------------------------- settings ----------------------------- -->
   <div id="tab-settings" class="hidden">
     <section class="card">
@@ -279,7 +325,7 @@
   </div>
 
   <footer class="foot">
-    <kbd>Alt</kbd> + <kbd>۱</kbd>…<kbd>۵</kbd> جابه‌جایی بین بخش‌ها ·
+    <kbd>Alt</kbd> + <kbd>۱</kbd>…<kbd>۶</kbd> جابه‌جایی بین بخش‌ها ·
     <kbd>/</kbd> جستجو · <kbd>r</kbd> به‌روزرسانی · <kbd>Esc</kbd> بستن
   </footer>
 </div>

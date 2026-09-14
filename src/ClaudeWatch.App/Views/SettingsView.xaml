@@ -456,6 +456,32 @@
                     </StackPanel>
                 </Border>
 
+                <!-- ====================== version ======================= -->
+                <TextBlock Text="{Binding L[Upd_Section]}" Style="{StaticResource SectionLabel}" />
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding UpdateStatusLine}"
+                                       Style="{StaticResource Body}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                            <Button Grid.Column="1" Content="{Binding L[Upd_Check]}"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Command="{Binding CheckUpdateCommand}" />
+                        </Grid>
+
+                        <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
+
+                        <CheckBox Style="{StaticResource Switch}" Content="{Binding L[Upd_Auto]}"
+                                  IsChecked="{Binding Edit.CheckForUpdates, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding L[Upd_Auto_Sub]}" Style="{StaticResource Caption}"
+                                   FontWeight="Normal" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+
                 <!-- ==================== appearance ====================== -->
                 <TextBlock Text="{Binding L[Set_Look]}" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}">

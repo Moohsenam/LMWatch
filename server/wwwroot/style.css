@@ -141,6 +141,29 @@ button:disabled { opacity: .4; cursor: default; }
 .danger { background: var(--alert-soft); color: var(--alert); border: 1px solid var(--alert); }
 .small { padding: 6px 12px; font-size: 12px; }
 
+/* The native file picker is a foreign object in a dark RTL panel. This leaves
+   its button alone and puts a matching frame around it. */
+input[type=file] {
+  width: 100%; padding: 8px 10px;
+  background: var(--surface-alt); color: var(--dim);
+  border: 1px solid var(--line); border-radius: 9px;
+  font: inherit; font-size: 12.5px; direction: ltr;
+}
+input[type=file]::file-selector-button {
+  font: inherit; font-weight: 700; font-size: 12px;
+  margin-inline-end: 10px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+}
+
+/* A download is a link, and it belongs in a row of buttons looking like one. */
+a.primary, a.secondary, a.ghost, a.danger {
+  display: inline-block; text-decoration: none; text-align: center;
+  font: inherit; font-weight: 700; font-size: 13.5px;
+  border-radius: 9px; padding: 11px 20px;
+}
+a.primary:hover, a.secondary:hover, a.ghost:hover, a.danger:hover { opacity: .88; }
+
 /* ---------------------------------------------------------------- pieces */
 
 .pill {

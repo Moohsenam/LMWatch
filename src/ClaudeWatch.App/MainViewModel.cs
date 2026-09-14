@@ -95,6 +95,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
         BuildCommands();
         BuildFeatureCommands();
+        BuildUpdateCommands();
         _ = LoadOrderServiceAsync();
     }
 
@@ -453,14 +454,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         ? L["Set_ClaudePath_Missing"]
         : Edit.Active.ExecutablePath;
 
-    public string VersionText
-    {
-        get
-        {
-            var version = typeof(MainViewModel).Assembly.GetName().Version;
-            return version is null ? "1.0" : $"{version.Major}.{version.Minor}.{version.Build}";
-        }
-    }
+    /// <summary>
+    /// The same number the update check compares against and the installer
+    /// stamped, so what About shows and what the server is asked about can
+    /// never drift apart.
+    /// </summary>
+    public string VersionText => UpdateClient.CurrentVersionText;
 
     public string ElevationText => TimeZoneController.IsElevated ? L["About_Admin"] : L["About_NotAdmin"];
 

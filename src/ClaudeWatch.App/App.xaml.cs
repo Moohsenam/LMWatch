@@ -29,6 +29,17 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // The uninstaller calls this before it deletes the folder. The firewall
+        // rule, the scheduled tasks and the start-with-Windows entry all live
+        // outside it and would otherwise be left behind, with the block still
+        // on and nothing left to lift it.
+        if (e.Args.Any(a => a.Equals("--uninstall-cleanup", StringComparison.OrdinalIgnoreCase)))
+        {
+            RemoveEverythingOutsideTheFolder();
+            Shutdown();
+            return;
+        }
+
         _instanceMutex = new Mutex(true, InstanceName, out var isFirst);
         if (!isFirst)
         {
@@ -98,6 +109,7 @@ public partial class App : Application
         _viewModel.Start();
         _ = _viewModel.StartLicenceAsync();
         StartLicenceWatch();
+        _viewModel.StartUpdateWatch();
     }
 
     /// <summary>
@@ -331,8 +343,55 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Everything the app put on the machine that is not inside its own folder.
+    /// Run from the uninstaller, which is already elevated, so none of this
+    /// asks for approval a second time. Each step is on its own: a task that
+    /// was never created is not a reason to leave the firewall rule behind.
+    /// </summary>
+    private static void RemoveEverythingOutsideTheFolder()
+    {
+        var settings = new SettingsStore().Load();
+
+        foreach (var profile in settings.Services)
+        {
+            try
+            {
+                FirewallController.Set(profile, blocked: false);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                FirewallController.Uninstall(profile);
+            }
+            catch
+            {
+            }
+        }
+
+        try
+        {
+            PrivilegedHelper.Uninstall();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            StartupRegistration.Set(false, false);
+        }
+        catch
+        {
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        _viewModel?.StopUpdateWatch();
         _tray?.Dispose();
         _showSignal?.Dispose();
         _instanceMutex?.Dispose();

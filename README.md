@@ -10,23 +10,41 @@ everything follows: the rules, the colour, the wording, the pages.
 
 ## Install
 
-Double-click **UPDATE SAFECHAT.cmd**. It clones the code on a machine that has
-never had it, fast-forwards one that has, builds it, puts shortcuts on your
-Desktop and in the Start Menu, and opens the app. That window is the only console
-you ever see.
+Download the installer from [safechat.ir](https://safechat.ir) and run it. It
+carries its own copy of .NET, so it fetches nothing while installing and works
+on a fresh Windows with no connection and no VPN. Windows asks for approval
+once, and there is one progress bar to watch.
 
-It installs what it needs on its own. If the .NET SDK is missing, or only the
-runtime is there, it installs the SDK with winget, and failing that with
-Microsoft's own installer into your user folder, which needs no administrator
-rights. Only if both routes fail does it open the download page and ask you to do
-it by hand.
+**Uninstall** from Windows Settings, or the Start Menu entry. It takes the
+firewall rule, the scheduled tasks and the start-with-Windows entry with it, and
+asks before deleting your settings and history.
 
-The build itself pulls nothing from the internet: the project has no third-party
-packages, so it works with no connection and no VPN.
+## Staying current
 
-**Uninstall:** double-click **Uninstall.cmd**. It removes the shortcuts, the
-start-with-Windows entry and the scheduled tasks, and asks before deleting your
-settings.
+The app keeps itself up to date. Every few hours it asks the server what the
+current build is, and when there is a newer one a bar appears at the top of the
+window saying so and what changed. One click downloads it, checks the file is
+byte-for-byte what the server described, and installs it; the app closes and
+comes straight back on the new version, with every setting and the licence key
+where they were.
+
+Nothing installs by itself, a file that does not match its hash is thrown away
+rather than run, and the whole thing can be switched off in Settings.
+
+## Releasing a new build
+
+For whoever owns the service, one command does the lot:
+
+```powershell
+.\tools\release.ps1 -Version 1.1.0 -Notes "Faster startup, Persian manual"
+```
+
+It publishes the app with the runtime inside it, compiles the installer with
+Inno Setup, hashes it, signs in to the server and uploads it. Everyone
+installed is offered it within a few hours. Add `-NoUpload` to build one and
+try it first, or `-Draft` to put it on the server switched off until you turn it
+on in the panel. A build that turns out badly is withdrawn from the same page,
+and everyone still on the old one stays there.
 
 ## First run
 
@@ -190,7 +208,9 @@ copied across on first run, so an upgrade keeps its settings and its history.
 src/ClaudeWatch.Core    the rules, detection and system access — no UI, fully testable
 src/ClaudeWatch.App     the WPF window, tray icon, wizard and theme
 server/                 the orders service: API, public page and owner panel
-tests/ClaudeWatch.Tests 200 checks over the decision table; run with `dotnet run`
+tests/ClaudeWatch.Tests 205 checks over the decision table; run with `dotnet run`
+tools/SafeChat.iss      the installer
+tools/release.ps1       build it, hash it, publish it — one command
 tools/                  setup, removal, icon generation and the offline checkers
 ```
 

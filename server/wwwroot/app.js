@@ -3,6 +3,7 @@
 const T = {
   fa: {
     tagline: 'پرداخت اشتراک به‌جای شما',
+    download: 'دانلود برنامه',
     formTitle: 'ثبت سفارش',
     formIntro: 'فرم را پر کنید. پس از بررسی، از همان راه ارتباطی که می‌نویسید با شما تماس گرفته می‌شود و مبلغ و روش تسویه را هماهنگ می‌کنیم.',
     plan: 'اشتراک', months: 'مدت', email: 'ایمیل اکانتی که اشتراک رویش فعال شود',
@@ -53,6 +54,7 @@ const T = {
   },
   en: {
     tagline: 'Subscription paid on your behalf',
+    download: 'Download the app',
     formTitle: 'Place an order',
     formIntro: 'Fill this in. We reply on the contact you give here and agree the amount and how you settle up.',
     plan: 'Plan', months: 'Duration', email: 'Email of the account to activate',

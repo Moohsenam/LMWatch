@@ -1,5 +1,6 @@
 using System.Text;
 using ClaudeWatch.Orders;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.FileProviders;
 
@@ -22,11 +23,13 @@ var store = new Store(dataRoot);
 var auth = new Auth(store);
 var limiter = new RateLimiter();
 var pricing = new PricingService(store);
+var releases = new ReleaseStore(dataRoot);
 
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(auth);
 builder.Services.AddSingleton(limiter);
 builder.Services.AddSingleton(pricing);
+builder.Services.AddSingleton(releases);
 
 builder.Services.Configure<JsonOptions>(options =>
 {
@@ -99,6 +102,30 @@ string ClientKey(HttpContext context)
     }
 
     return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+}
+
+/// <summary>
+/// The address the caller reached us on, so a download link works whether the
+/// request came through Caddy, nginx or straight to the port. Only ever handed
+/// back to the same caller, so a forged Host header can mislead nobody else.
+/// </summary>
+string Root(HttpContext context)
+{
+    var scheme = First(context.Request.Headers["X-Forwarded-Proto"].ToString());
+    if (scheme.Length == 0)
+    {
+        scheme = context.Request.Scheme;
+    }
+
+    var host = First(context.Request.Headers["X-Forwarded-Host"].ToString());
+    if (host.Length == 0)
+    {
+        host = context.Request.Host.Value ?? string.Empty;
+    }
+
+    return $"{scheme}://{host}";
+
+    static string First(string value) => value.Split(',')[0].Trim();
 }
 
 bool IsAdmin(HttpContext context)
@@ -757,6 +784,168 @@ app.MapPost("/api/admin/pricing/refresh", async (HttpContext context) =>
 
     var result = await pricing.RefreshAsync(force: true);
     return Results.Json(new { ok = result.Ok, toman = result.Toman, error = result.Error });
+});
+
+// ------------------------------------------------------------- app releases
+
+// What the desktop app asks every few hours. Deliberately public and cheap:
+// version, what changed, where to get it, and the hash to check it against.
+app.MapGet("/api/app/latest", (HttpContext context) =>
+{
+    if (!limiter.Allow("latest:" + ClientKey(context), 60, TimeSpan.FromMinutes(10)))
+    {
+        return Results.Json(new { error = "too_many" }, statusCode: 429);
+    }
+
+    var release = releases.Latest();
+
+    if (release is null)
+    {
+        return Results.Json(new { version = "", url = "" });
+    }
+
+    return Results.Json(new
+    {
+        version = release.Version,
+        notes = release.Notes,
+        url = $"{Root(context)}/download/{release.Version}",
+        sha256 = release.Sha256,
+        size = release.Size,
+        published = release.Published
+    });
+});
+
+// The link on the site and in the app. /download is whatever is current.
+app.MapGet("/download", (HttpContext context) =>
+{
+    var release = releases.Latest();
+
+    return release is null
+        ? Results.Json(new { error = "not_found" }, statusCode: 404)
+        : Results.Redirect($"/download/{release.Version}");
+});
+
+app.MapGet("/download/{version}", (HttpContext context, string version) =>
+{
+    var release = releases.ByVersion(version);
+
+    if (release is null || !release.Live)
+    {
+        return Results.Json(new { error = "not_found" }, statusCode: 404);
+    }
+
+    var path = releases.PathOf(release);
+
+    if (!File.Exists(path))
+    {
+        return Results.Json(new { error = "not_found" }, statusCode: 404);
+    }
+
+    releases.CountDownload(release.Version);
+
+    return Results.File(path, "application/octet-stream", release.FileName, enableRangeProcessing: true);
+});
+
+app.MapGet("/api/admin/releases", (HttpContext context) =>
+{
+    var guard = RequireAdmin(context);
+    return guard ?? Results.Json(new { items = releases.All(), latest = releases.Latest()?.Version ?? "" });
+});
+
+// The installer itself, as the raw body. A build is tens of megabytes, so it
+// goes straight to a file rather than through memory, and the body limit is
+// lifted for this one route rather than for the whole server.
+app.MapPut("/api/admin/releases/{version}", async (HttpContext context, string version, string? notes) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    string clean;
+    try
+    {
+        clean = ReleaseStore.CleanVersion(version);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.Json(new { error = "bad_version", detail = ex.Message }, statusCode: 400);
+    }
+
+    var sizeLimit = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+    if (sizeLimit is { IsReadOnly: false })
+    {
+        sizeLimit.MaxRequestBodySize = 400L * 1024 * 1024;
+    }
+
+    var temp = Path.Combine(releases.Folder, $"upload-{Guid.NewGuid():N}.tmp");
+
+    try
+    {
+        await using (var file = File.Create(temp))
+        {
+            await context.Request.Body.CopyToAsync(file);
+        }
+
+        if (new FileInfo(temp).Length < 1024)
+        {
+            File.Delete(temp);
+            return Results.Json(new { error = "empty" }, statusCode: 400);
+        }
+
+        var published = releases.Publish(clean, notes ?? string.Empty, temp);
+
+        app.Logger.LogInformation("Release {Version} published, {Size} bytes",
+            published.Version, published.Size);
+
+        return Results.Json(new
+        {
+            ok = true,
+            version = published.Version,
+            sha256 = published.Sha256,
+            size = published.Size,
+            url = $"{Root(context)}/download/{published.Version}"
+        });
+    }
+    catch (Exception ex)
+    {
+        if (File.Exists(temp))
+        {
+            try { File.Delete(temp); } catch { /* the temp file is not worth a second failure */ }
+        }
+
+        app.Logger.LogError(ex, "Release upload failed");
+        return Results.Json(new { error = "upload_failed" }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/admin/releases/{version}/live", (HttpContext context, string version, bool? on) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var release = releases.SetLive(version, on ?? true);
+
+    return release is null
+        ? Results.Json(new { error = "not_found" }, statusCode: 404)
+        : Results.Json(new { ok = true, version = release.Version, live = release.Live });
+});
+
+app.MapDelete("/api/admin/releases/{version}", (HttpContext context, string version) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    return releases.Delete(version)
+        ? Results.Json(new { ok = true })
+        : Results.Json(new { error = "not_found" }, statusCode: 404);
 });
 
 // Housekeeping for the in-memory rate limit table.

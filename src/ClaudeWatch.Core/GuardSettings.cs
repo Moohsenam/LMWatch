@@ -161,6 +161,12 @@ public sealed class GuardSettings
 
     public string OrdersBaseUrl { get; set; } = DefaultOrdersBaseUrl;
 
+    /// <summary>
+    /// Ask the server every few hours whether there is a newer build. Only
+    /// asking: what is found is offered and waits to be accepted.
+    /// </summary>
+    public bool CheckForUpdates { get; set; } = true;
+
     // ---- application --------------------------------------------------
     public bool StartWithWindows { get; set; } = true;
     public bool StartMinimized { get; set; }
@@ -214,6 +220,7 @@ public sealed class GuardSettings
             IpRefreshSeconds = IpRefreshSeconds,
             KnownHomeIp = KnownHomeIp,
             OrdersBaseUrl = OrdersBaseUrl,
+            CheckForUpdates = CheckForUpdates,
             StartWithWindows = StartWithWindows,
             StartMinimized = StartMinimized,
             MinimizeToTray = MinimizeToTray,

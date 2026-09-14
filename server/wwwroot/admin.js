@@ -20,7 +20,9 @@ let config = { plans: [] };
 
 async function api(path, options = {}) {
   const headers = Object.assign({ 'X-CW': '1' }, options.headers || {});
-  if (options.body) headers['Content-Type'] = 'application/json';
+
+  // JSON unless the caller said otherwise, which the installer upload does.
+  if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
 
   const response = await fetch(path, Object.assign({}, options, { headers }));
 
@@ -710,7 +712,7 @@ async function deleteOrder(id) {
 
 // ----------------------------------------------------------------- settings
 
-const TABS = ['home', 'orders', 'keys', 'pricing', 'settings'];
+const TABS = ['home', 'orders', 'keys', 'pricing', 'releases', 'settings'];
 
 function showTab(tab) {
   if (!TABS.includes(tab)) tab = 'home';
@@ -727,6 +729,7 @@ function showTab(tab) {
   if (tab === 'orders') loadOrders();
   if (tab === 'pricing') loadPricing();
   if (tab === 'keys') loadKeys();
+  if (tab === 'releases') loadReleases();
 }
 
 document.querySelectorAll('.tabs button').forEach((button) => {
@@ -1152,7 +1155,7 @@ document.addEventListener('keydown', (event) => {
   if ($('panelView').classList.contains('hidden')) return;
 
   // Alt+number jumps between tabs and is safe to press mid-sentence.
-  if (event.altKey && !event.ctrlKey && event.key >= '1' && event.key <= '5') {
+  if (event.altKey && !event.ctrlKey && event.key >= '1' && event.key <= '6') {
     event.preventDefault();
     showTab(TABS[Number(event.key) - 1]);
     return;
@@ -1175,6 +1178,144 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'r') {
     event.preventDefault();
     showTab(tab);
+  }
+});
+
+// ---------------------------------------------------------------- releases
+
+function megabytes(bytes) {
+  return (Number(bytes || 0) / 1024 / 1024).toFixed(1);
+}
+
+// A bare number inside a Persian sentence drags the punctuation around it out
+// of place. The isolate marks keep each one in its own run.
+function num(value) {
+  return '⁦' + value + '⁩';
+}
+
+async function loadReleases() {
+  let data;
+  try {
+    const response = await api('/api/admin/releases');
+    data = await response.json();
+  } catch (e) {
+    return;
+  }
+
+  const items = data.items || [];
+  const live = items.find((r) => r.version === data.latest);
+
+  if (live) {
+    $('relState').className = 'banner ok';
+    $('relState').textContent =
+      `نسخه ${num(live.version)} در دسترس همه است. حجم ${num(megabytes(live.size))} مگابایت، `
+      + `${num(live.downloads)} بار دانلود شده.`;
+    $('relLink').value = location.origin + '/download';
+  } else {
+    $('relState').className = 'banner warn';
+    $('relState').textContent = 'هیچ نسخه‌ای روشن نیست، پس به کسی آپدیت پیشنهاد نمی‌شود.';
+    $('relLink').value = '';
+  }
+
+  $('relEmpty').classList.toggle('hidden', items.length > 0);
+
+  $('relList').innerHTML = items.map((r) => {
+    const bits = [
+      num(megabytes(r.size)) + ' مگابایت',
+      num(when(r.published)),
+      num(r.downloads) + ' دانلود'
+    ];
+    if (r.notes) bits.push(esc(r.notes));
+
+    return `
+      <div class="key-row">
+        <span class="code">${esc(r.version)}</span>
+        <span class="kpill ${r.version === data.latest ? 'Active' : r.live ? 'Unused' : 'Revoked'}">
+          ${r.version === data.latest ? 'در حال ارائه' : r.live ? 'روشن' : 'خاموش'}
+        </span>
+        <span class="who">${bits.join(' · ')}</span>
+        <span class="acts">
+          <button class="ghost small" data-relcopy="${esc(r.sha256)}">کپی هش</button>
+          <a class="secondary small" href="/download/${encodeURIComponent(r.version)}">دانلود</a>
+          ${r.live
+            ? `<button class="secondary small" data-reloff="${esc(r.version)}">خاموش کن</button>`
+            : `<button class="secondary small" data-relon="${esc(r.version)}">روشن کن</button>`}
+          <button class="danger small" data-reldel="${esc(r.version)}">حذف</button>
+        </span>
+      </div>`;
+  }).join('');
+
+  $('relList').querySelectorAll('[data-relcopy]').forEach((b) =>
+    b.addEventListener('click', () => copy(b.dataset.relcopy, b)));
+
+  const setLive = async (version, on) => {
+    await api(`/api/admin/releases/${encodeURIComponent(version)}/live?on=${on}`, { method: 'POST' });
+    loadReleases();
+  };
+
+  $('relList').querySelectorAll('[data-relon]').forEach((b) =>
+    b.addEventListener('click', () => setLive(b.dataset.relon, true)));
+
+  $('relList').querySelectorAll('[data-reloff]').forEach((b) =>
+    b.addEventListener('click', () => setLive(b.dataset.reloff, false)));
+
+  $('relList').querySelectorAll('[data-reldel]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirm(`نسخه ${b.dataset.reldel} و فایلش پاک شوند؟`)) return;
+      await api('/api/admin/releases/' + encodeURIComponent(b.dataset.reldel), { method: 'DELETE' });
+      loadReleases();
+    }));
+}
+
+$('relUpload').addEventListener('click', async () => {
+  const version = $('relVersion').value.trim();
+  const file = $('relFile').files[0];
+  const box = $('relProgress');
+
+  const stop = (message) => {
+    box.className = 'banner warn';
+    box.textContent = message;
+    box.classList.remove('hidden');
+  };
+
+  if (!/^\d+(\.\d+){1,3}$/.test(version)) return stop('شماره نسخه را مثل 1.1.0 بنویسید.');
+  if (!file) return stop('فایل نصاب را انتخاب کنید.');
+
+  box.className = 'banner';
+  box.textContent = `در حال آپلود ${num(megabytes(file.size))} مگابایت...`;
+  box.classList.remove('hidden');
+
+  $('relUpload').disabled = true;
+
+  try {
+    const notes = encodeURIComponent($('relNotes').value.trim());
+    const response = await api(
+      `/api/admin/releases/${encodeURIComponent(version)}?notes=${notes}`,
+      { method: 'PUT', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
+
+    const answer = await response.json();
+
+    if (!response.ok) {
+      stop('آپلود نشد: ' + (answer.detail || answer.error || response.status));
+      return;
+    }
+
+    if ($('relDraft').checked) {
+      await api(`/api/admin/releases/${encodeURIComponent(version)}/live?on=false`, { method: 'POST' });
+    }
+
+    box.className = 'banner ok';
+    box.textContent = `نسخه ${version} آپلود شد.`;
+
+    $('relVersion').value = '';
+    $('relNotes').value = '';
+    $('relFile').value = '';
+
+    loadReleases();
+  } catch (e) {
+    stop('آپلود نشد: ' + e.message);
+  } finally {
+    $('relUpload').disabled = false;
   }
 });
 

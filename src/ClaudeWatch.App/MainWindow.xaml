@@ -246,6 +246,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="46" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -323,8 +324,49 @@
                     </Grid>
                 </Border>
 
+                <!-- A new build is waiting. It sits above every page rather than
+                     on one of them, because it is about the app itself, and it
+                     stays out of the way until someone answers it. -->
+                <Border Grid.Row="2" Background="{DynamicResource InfoSoft}"
+                        BorderBrush="{DynamicResource Info}" BorderThickness="0,0,0,1"
+                        Padding="24,11"
+                        Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Center"
+                                 Fill="{DynamicResource Info}" />
+
+                        <StackPanel Grid.Column="1" Margin="12,0,14,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding UpdateTitle}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Info}" />
+                            <TextBlock Text="{Binding UpdateDetail}" Style="{StaticResource Caption}"
+                                       Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+
+                            <ProgressBar Height="3" Minimum="0" Maximum="100" Margin="0,8,0,0"
+                                         Value="{Binding UpdatePercent, Mode=OneWay}"
+                                         Foreground="{DynamicResource Info}"
+                                         Background="{DynamicResource Line}" BorderThickness="0"
+                                         Visibility="{Binding UpdateWorking, Converter={StaticResource BoolVis}}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="{Binding L[Upd_Install]}" Style="{StaticResource PrimaryButton}"
+                                    Command="{Binding StartUpdateCommand}"
+                                    IsEnabled="{Binding UpdateCanStart}"
+                                    Visibility="{Binding UpdateWorking, Converter={StaticResource NotBoolVis}}" />
+                            <Button Content="{Binding L[Upd_Later]}" Style="{StaticResource SecondaryButton}"
+                                    Margin="8,0,0,0" Command="{Binding DismissUpdateCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- pages -->
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="3">
                     <views:DashboardView Visibility="{Binding IsDashboard, Converter={StaticResource BoolVis}}" />
                     <views:BuyView Visibility="{Binding IsBuy, Converter={StaticResource BoolVis}}" />
                     <views:OrdersView Visibility="{Binding IsOrders, Converter={StaticResource BoolVis}}" />

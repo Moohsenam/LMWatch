@@ -65,6 +65,32 @@ Your other two domains are untouched in every one of those rows. Nothing
 already in the config is rewritten, and certbot only ever writes the blocks for
 the names you gave it.
 
+### Shipping a new version of the app
+
+The server hosts the installer and tells every copy of the app what the current
+build is. From the machine with the source on it:
+
+```powershell
+.\tools\release.ps1 -Version 1.1.0 -Notes "Faster startup"
+```
+
+That publishes, compiles the installer, uploads it and makes it current. The
+panel's **نسخه‌ها** tab lists every build with its size, hash and download
+count, and can switch one off or delete it. `/download` is always whatever is
+current, which is the link the landing page should use.
+
+Three endpoints do the work:
+
+| | |
+| --- | --- |
+| `GET /api/app/latest` | what the app asks: version, notes, URL, SHA-256 |
+| `GET /download` | the current installer |
+| `PUT /api/admin/releases/{version}` | the upload, admin only |
+
+The installers live in `releases/` inside the data folder, so they are part of
+the same backup as everything else. They are tens of megabytes each, so delete
+the ones nobody is on any more.
+
 ### Putting the landing page up
 
 `/var/www/safechat` is a plain folder of files. When the site exists, copy it in:

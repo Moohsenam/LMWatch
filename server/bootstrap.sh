@@ -360,14 +360,23 @@ if [ -n "$SITE_DOMAIN" ]; then
   h1 { margin: 0; font-size: 34px; font-weight: 800; color: #D97757; letter-spacing: -.5px; }
   p  { margin: 16px auto 0; max-width: 420px; font-size: 15.5px; line-height: 2.1; color: #b6aca6; }
   .soon { margin-top: 30px; font-size: 13px; color: #7c726d; }
+  .row { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   a.cta {
-    display: inline-block; margin-top: 30px; padding: 13px 30px;
+    display: inline-block; padding: 13px 28px;
     border-radius: 11px; text-decoration: none; font-size: 15px; font-weight: 700;
     color: #fff; background: #D97757;
     box-shadow: 0 10px 28px rgba(217, 119, 87, .26);
     transition: transform .16s ease, box-shadow .16s ease;
   }
   a.cta:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(217, 119, 87, .34); }
+  a.ghost {
+    display: inline-block; padding: 13px 28px;
+    border-radius: 11px; text-decoration: none; font-size: 15px; font-weight: 700;
+    color: #efe9e5; background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(255, 255, 255, .12);
+    transition: background .16s ease;
+  }
+  a.ghost:hover { background: rgba(255, 255, 255, .11); }
 </style>
 </head>
 <body>
@@ -378,7 +387,10 @@ if [ -n "$SITE_DOMAIN" ]; then
       نگهبان ویندوز برای کلاد و چت جی‌پی‌تی. تا وقتی تونل وصل است و ساعت سیستم
       روی منطقه کاری شماست برنامه باز می‌ماند، و لحظه‌ای که تونل بیفتد بسته می‌شود.
     </p>
-    <a class="cta" href="https://$DOMAIN">ثبت سفارش و خرید اشتراک</a>
+    <div class="row">
+      <a class="cta" href="https://$DOMAIN/download">دانلود برنامه</a>
+      <a class="ghost" href="https://$DOMAIN">ثبت سفارش و خرید اشتراک</a>
+    </div>
     <div class="soon">صفحه معرفی کامل به‌زودی همین‌جا</div>
   </main>
 </body>
