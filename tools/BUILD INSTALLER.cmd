@@ -41,6 +41,9 @@ echo   Building SafeChat !VER!
 echo   This takes a few minutes. The .NET runtime goes inside the installer,
 echo   so it is a large file and the compression is slow.
 echo.
+echo   The first build downloads that runtime, so have the VPN on for it.
+echo   After that it is cached and later builds need no connection.
+echo.
 
 if exist "%WORK%" rmdir /s /q "%WORK%" 2>nul
 

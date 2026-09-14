@@ -34,6 +34,13 @@
 .PARAMETER Draft
     Upload it but leave it switched off, so it is on the server and nobody is
     offered it until you turn it on in the panel.
+
+.PARAMETER Source
+    Where to get the .NET runtime files that go inside the installer. The
+    project itself has no packages and nuget.config clears every source so an
+    ordinary build needs no connection; this one step does, because a
+    self-contained app carries the runtime and the runtime comes from there.
+    Downloaded once, then cached, so only the first build needs it.
 #>
 
 [CmdletBinding()]
@@ -43,7 +50,8 @@ param(
     [string] $Server = 'https://app.safechat.ir',
     [string] $Password,
     [switch] $NoUpload,
-    [switch] $Draft
+    [switch] $Draft,
+    [string] $Source = 'https://api.nuget.org/v3/index.json'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -113,17 +121,42 @@ if (Test-Path $publishTo) { Remove-Item $publishTo -Recurse -Force }
 
 # Self-contained on purpose. A customer on a bare Windows, behind a filtered
 # connection, cannot be sent to Microsoft to fetch a runtime first.
+#
+# nuget.config clears every source so an ordinary build of this project never
+# touches the network. This is the one step that does: the runtime travelling
+# inside the installer is downloaded rather than part of the SDK. It is fetched
+# once and cached in %USERPROFILE%\.nuget\packages, and --source overrides the
+# cleared list for this command alone.
+Write-Host "   runtime from $Source"
+
+$log = Join-Path ([System.IO.Path]::GetTempPath()) 'safechat-publish.log'
+
 & dotnet publish $appProj `
     -c Release `
     -r win-x64 `
     --self-contained true `
+    --source $Source `
     -p:PublishSingleFile=false `
     -p:DebugType=none `
     -p:SatelliteResourceLanguages=en `
     -o $publishTo `
-    --nologo -v quiet
+    --nologo -v quiet 2>&1 | Tee-Object -FilePath $log
 
-if ($LASTEXITCODE -ne 0) { Fail 'The build failed. Nothing was uploaded.' }
+if ($LASTEXITCODE -ne 0) {
+    if (Select-String -Path $log -Pattern 'NU1301|NU1100|service index' -Quiet) {
+        Fail @"
+Could not reach $Source to fetch the .NET runtime files.
+
+   This one step needs a connection. Turn the VPN on and run it again. Once it
+   works the files are cached and every later build is offline again.
+
+   To pull them from somewhere else instead:
+       .\tools\release.ps1 -Version $Version -Source https://your-mirror/v3/index.json
+"@
+    }
+
+    Fail 'The build failed. Nothing was uploaded.'
+}
 
 $exe = Join-Path $publishTo 'SafeChat.exe'
 if (-not (Test-Path $exe)) { Fail 'The build produced no SafeChat.exe.' }

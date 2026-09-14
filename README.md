@@ -41,7 +41,13 @@ For whoever owns the service, one command does the lot:
 
 It publishes the app with the runtime inside it, compiles the installer with
 Inno Setup, hashes it, signs in to the server and uploads it. Everyone
-installed is offered it within a few hours. Add `-NoUpload` to build one and
+installed is offered it within a few hours.
+
+The project has no packages and `nuget.config` clears every source, so an
+ordinary build needs no connection. Publishing self-contained is the exception:
+the runtime that travels inside the installer is downloaded the first time and
+cached afterwards, so that one build wants a connection and none after it do.
+Point it somewhere else with `-Source` if you have a mirror. Add `-NoUpload` to build one and
 try it first, or `-Draft` to put it on the server switched off until you turn it
 on in the panel. A build that turns out badly is withdrawn from the same page,
 and everyone still on the old one stays there.
