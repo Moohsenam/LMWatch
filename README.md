@@ -21,12 +21,23 @@ asks before deleting your settings and history.
 
 ## Staying current
 
-The app keeps itself up to date. Every few hours it asks the server what the
-current build is, and when there is a newer one a bar appears at the top of the
-window saying so and what changed. One click downloads it, checks the file is
-byte-for-byte what the server described, and installs it; the app closes and
-comes straight back on the new version, with every setting and the licence key
-where they were.
+The app keeps itself up to date. Every ten minutes it asks what the current
+build is, and when there is a newer one a bar appears at the top of the window
+saying so and what changed. One click downloads it, checks the file is
+byte-for-byte what was described, and installs it; the app closes and comes
+straight back on the new version, with every setting and the licence key where
+they were.
+
+Settings has the same thing as a section: which version this is, a button that
+goes and looks now rather than waiting for the timer, what changed in the one
+being offered, how often to ask, and a switch to stop asking.
+
+Where it asks is a public GitHub repository first, then the server. The
+repository is a name in Settings and is empty to begin with, so out of the box
+the server is the only source. A private repository cannot go there: a token
+that ships inside the app can be read straight back out of it. Private
+repositories belong behind the server, which keeps its own token and mirrors
+them — see [server/DEPLOY.md](server/DEPLOY.md).
 
 Nothing installs by itself, a file that does not match its hash is thrown away
 rather than run, and the whole thing can be switched off in Settings.

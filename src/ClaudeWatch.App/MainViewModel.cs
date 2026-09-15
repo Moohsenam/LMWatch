@@ -748,6 +748,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         Guard.Start();
 
         ApplyStartupRegistration();
+        RestartUpdateWatch();
         _log.Prune(_settings.LogRetentionDays);
 
         L.Language = _settings.Language;

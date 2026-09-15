@@ -34,6 +34,7 @@ public static class Program
         ProcessMatchingIsNameOnly();
         ExtraAndExcludedNamesWork();
         ServerAddressesAreNormalized();
+        UpdateCheckingIsSane();
         TheSetupScriptIsWellFormed();
         GraceHoldsFireThenStops();
         GraceClearsWhenTheVpnReturns();
@@ -317,6 +318,57 @@ public static class Program
         Check("settings loaded with no address get the default",
             SettingsStore.Sanitize(new GuardSettings { OrdersBaseUrl = "  " }).OrdersBaseUrl
                 == GuardSettings.DefaultOrdersBaseUrl);
+    }
+
+    private static void UpdateCheckingIsSane()
+    {
+        // Ten minutes out of the box, and a hand-edited file cannot turn the
+        // check into a flood or into never.
+        Check("ten minutes by default", new GuardSettings().UpdateCheckMinutes == 10);
+        Check("nothing faster than two minutes",
+            SettingsStore.Sanitize(new GuardSettings { UpdateCheckMinutes = 0 }).UpdateCheckMinutes == 2);
+        Check("and nothing slower than a day",
+            SettingsStore.Sanitize(new GuardSettings { UpdateCheckMinutes = 99999 }).UpdateCheckMinutes == 1440);
+
+        // The repository is off unless someone fills it in, because the only
+        // one that would work is a public one they have made on purpose.
+        Check("no repository out of the box", new GuardSettings().UpdateRepo.Length == 0);
+        Check("a pasted address is tidied",
+            SettingsStore.Sanitize(new GuardSettings { UpdateRepo = " owner/name/ " }).UpdateRepo == "owner/name");
+        Check("a missing branch reads as main",
+            SettingsStore.Sanitize(new GuardSettings { UpdateRepoBranch = "" }).UpdateRepoBranch == "main");
+
+        // The settings that carry between machines carry these too.
+        var copy = new GuardSettings
+        {
+            UpdateCheckMinutes = 25,
+            UpdateRepo = "me/mine",
+            CheckForUpdates = false
+        }.Clone();
+
+        Check("the interval survives an export", copy.UpdateCheckMinutes == 25);
+        Check("so does the repository", copy.UpdateRepo == "me/mine");
+        Check("and the switch", !copy.CheckForUpdates);
+
+        // A build is only newer when its number is higher, whichever way the
+        // dots fall.
+        Check("1.10.0 beats 1.9.9", new Version(1, 10, 0) > new Version(1, 9, 9));
+        Check("this build reports a version", UpdateClient.CurrentVersionText.Length > 0);
+
+        // A file that is not what the server described is never run.
+        var temp = Path.Combine(Path.GetTempPath(), $"cw-verify-{Guid.NewGuid():N}.bin");
+        File.WriteAllText(temp, "installer");
+
+        var real = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(temp)));
+
+        Check("a matching hash passes", UpdateClient.Verify(temp, real));
+        Check("case does not matter", UpdateClient.Verify(temp, real.ToLowerInvariant()));
+        Check("a wrong hash fails", !UpdateClient.Verify(temp, new string('a', 64)));
+        Check("an empty hash fails", !UpdateClient.Verify(temp, ""));
+        Check("a missing file fails", !UpdateClient.Verify(temp + ".gone", real));
+
+        File.Delete(temp);
     }
 
     private static void TheSetupScriptIsWellFormed()

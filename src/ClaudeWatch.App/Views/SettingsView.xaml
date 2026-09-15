@@ -460,24 +460,83 @@
                 <TextBlock Text="{Binding L[Upd_Section]}" Style="{StaticResource SectionLabel}" />
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
+
+                        <!-- Which version this is, and the button that goes and
+                             looks without waiting for the timer. -->
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding UpdateStatusLine}"
-                                       Style="{StaticResource Body}" VerticalAlignment="Center"
-                                       TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Content="{Binding L[Upd_Check]}"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Command="{Binding CheckUpdateCommand}" />
+
+                            <StackPanel Grid.Column="0" Margin="0,0,12,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding UpdateInstalledLine}" Style="{StaticResource Body}"
+                                           FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding UpdateStatusLine}" Style="{StaticResource Caption}"
+                                           Margin="0,4,0,0" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding UpdateSourceLine}" Style="{StaticResource Caption}"
+                                           FontWeight="Normal" Margin="0,3,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <Button Content="{Binding L[Upd_Check]}"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Command="{Binding CheckUpdateCommand}" />
+                                <Button Content="{Binding L[Upd_Install]}"
+                                        Style="{StaticResource PrimaryButton}" Margin="0,8,0,0"
+                                        Command="{Binding StartUpdateCommand}"
+                                        Visibility="{Binding UpdateShowInstall, Converter={StaticResource BoolVis}}" />
+                            </StackPanel>
                         </Grid>
 
-                        <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,14" />
+                        <ProgressBar Height="3" Minimum="0" Maximum="100" Margin="0,12,0,0"
+                                     Value="{Binding UpdatePercent, Mode=OneWay}"
+                                     Foreground="{DynamicResource Info}"
+                                     Background="{DynamicResource Line}" BorderThickness="0"
+                                     Visibility="{Binding UpdateWorking, Converter={StaticResource BoolVis}}" />
+
+                        <!-- What changed, when the server said anything. -->
+                        <Border Background="{DynamicResource SurfaceAlt}" CornerRadius="8" Padding="12,10"
+                                Margin="0,14,0,0"
+                                Visibility="{Binding UpdateHasNotes, Converter={StaticResource BoolVis}}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding L[Upd_Notes]}" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding UpdateNotes}" Style="{StaticResource Body}"
+                                           TextWrapping="Wrap" Margin="0,5,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Height="1" Background="{DynamicResource LineSoft}" Margin="0,16" />
 
                         <CheckBox Style="{StaticResource Switch}" Content="{Binding L[Upd_Auto]}"
                                   IsChecked="{Binding Edit.CheckForUpdates, Mode=TwoWay}" />
                         <TextBlock Text="{Binding L[Upd_Auto_Sub]}" Style="{StaticResource Caption}"
+                                   FontWeight="Normal" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="14" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding L[Upd_Interval]}" Style="{StaticResource Caption}"
+                                           TextWrapping="Wrap" />
+                                <TextBox Style="{StaticResource Field}" Margin="0,6,0,0"
+                                         Text="{Binding UpdateMinutes, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{Binding L[Upd_Repo]}" Style="{StaticResource Caption}"
+                                           TextWrapping="Wrap" />
+                                <TextBox Style="{StaticResource Field}" Margin="0,6,0,0"
+                                         FontFamily="Consolas, Courier New"
+                                         Text="{Binding Edit.UpdateRepo, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="{Binding L[Upd_Repo_Sub]}" Style="{StaticResource Caption}"
                                    FontWeight="Normal" TextWrapping="Wrap" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>

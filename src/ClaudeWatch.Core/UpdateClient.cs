@@ -83,17 +83,91 @@ public sealed class UpdateClient
     public int Percent { get; private set; }
     public DateTimeOffset LastCheck { get; private set; }
 
+    /// <summary>Which of the two answered last time, for the line in Settings.</summary>
+    public string Source { get; private set; } = string.Empty;
+
     /// <summary>The verified installer on disk, once there is one.</summary>
     public string ReadyFile { get; private set; } = string.Empty;
 
     // ------------------------------------------------------------- checking
 
     /// <summary>
-    /// Returns the newer build, or null when this one is current, the server
-    /// has nothing, or it cannot be reached. Never throws: a server that is
-    /// down is not a reason for the app to behave differently.
+    /// Asks GitHub first when a repository is set, then the server. Two places
+    /// rather than one because either can be unreachable from where the
+    /// customer is sitting, and an update that only arrives half the time is
+    /// not much of an update.
+    ///
+    /// Returns the newer build, or null when this one is current or nothing
+    /// answered. Never throws: neither being reachable is not a reason for the
+    /// app to behave differently.
     /// </summary>
-    public async Task<AppUpdate?> CheckAsync(string baseUrl, CancellationToken cancel = default)
+    public async Task<AppUpdate?> CheckAsync(GuardSettings settings, CancellationToken cancel = default)
+    {
+        Step = UpdateStep.Checking;
+        Error = string.Empty;
+
+        var found = await FromGitHubAsync(settings, cancel).ConfigureAwait(false);
+        var source = "github";
+
+        if (found is null)
+        {
+            found = await FromServerAsync(settings.OrdersBaseUrl, cancel).ConfigureAwait(false);
+            source = "server";
+        }
+
+        LastCheck = DateTimeOffset.UtcNow;
+
+        if (found is null)
+        {
+            Step = UpdateStep.Idle;
+            Available = null;
+            return null;
+        }
+
+        Source = source;
+        Available = found;
+        Step = UpdateStep.Available;
+        return found;
+    }
+
+    /// <summary>
+    /// latest.json on a public repository's default branch, read through the
+    /// raw file host rather than the API: no token, no rate limit worth
+    /// thinking about, and it is a plain CDN.
+    ///
+    /// A private repository cannot be used here, and deliberately so. Reaching
+    /// one needs a token, a token inside the app is readable by anyone holding
+    /// a copy of the app, and a leaked token is worse than a visible address.
+    /// A private repository belongs behind the server, which keeps its token to
+    /// itself and hands customers the file.
+    /// </summary>
+    private async Task<AppUpdate?> FromGitHubAsync(GuardSettings settings, CancellationToken cancel)
+    {
+        var repo = (settings.UpdateRepo ?? string.Empty).Trim().Trim('/');
+
+        if (repo.Length == 0 || repo.Count(c => c == '/') != 1)
+        {
+            return null;
+        }
+
+        var branch = string.IsNullOrWhiteSpace(settings.UpdateRepoBranch) ? "main" : settings.UpdateRepoBranch.Trim();
+        var url = $"https://raw.githubusercontent.com/{repo}/{branch}/latest.json";
+
+        try
+        {
+            var body = await Client.GetStringAsync(url, cancel).ConfigureAwait(false);
+            var release = JsonSerializer.Deserialize<AppUpdate>(body, Json);
+
+            return Newer(release, GitHubHosts);
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            return null;
+        }
+    }
+
+    private async Task<AppUpdate?> FromServerAsync(string baseUrl, CancellationToken cancel)
     {
         var root = OrdersClient.Normalize(baseUrl);
 
@@ -102,52 +176,59 @@ public sealed class UpdateClient
             return null;
         }
 
-        Step = UpdateStep.Checking;
-        Error = string.Empty;
-
         try
         {
             var body = await Client.GetStringAsync($"{root}/api/app/latest", cancel).ConfigureAwait(false);
             var release = JsonSerializer.Deserialize<AppUpdate>(body, Json);
 
-            LastCheck = DateTimeOffset.UtcNow;
-
-            if (release is null
-                || string.IsNullOrWhiteSpace(release.Version)
-                || string.IsNullOrWhiteSpace(release.Url))
-            {
-                Step = UpdateStep.Idle;
-                Available = null;
-                return null;
-            }
-
-            if (!Version.TryParse(release.Version, out var offered) || Normalise(offered) <= _current)
-            {
-                Step = UpdateStep.Idle;
-                Available = null;
-                return null;
-            }
-
-            // A link the server hands back has to stay on the server. Anything
-            // else would let one bad answer point the installer elsewhere.
-            if (!SameHost(root, release.Url))
-            {
-                Step = UpdateStep.Idle;
-                Available = null;
-                return null;
-            }
-
-            Available = release;
-            Step = UpdateStep.Available;
-            return release;
+            return Newer(release, new[] { new Uri(root).Host });
         }
         catch (Exception ex)
         {
-            Step = UpdateStep.Idle;
             Error = ex.Message;
             return null;
         }
     }
+
+    /// <summary>
+    /// An answer worth acting on: a real version, newer than this one, and a
+    /// download link on a host we were going to talk to anyway. That last check
+    /// is what stops one bad or tampered answer from pointing the installer at
+    /// somebody else's file.
+    /// </summary>
+    private AppUpdate? Newer(AppUpdate? release, IReadOnlyCollection<string> allowed)
+    {
+        if (release is null
+            || string.IsNullOrWhiteSpace(release.Version)
+            || string.IsNullOrWhiteSpace(release.Url)
+            || string.IsNullOrWhiteSpace(release.Sha256))
+        {
+            return null;
+        }
+
+        if (!Version.TryParse(release.Version, out var offered) || Normalise(offered) <= _current)
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(release.Url, UriKind.Absolute, out var link)
+            || link.Scheme != Uri.UriSchemeHttps
+            || !allowed.Any(host => string.Equals(host, link.Host, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return release;
+    }
+
+    /// <summary>Where GitHub actually serves release files from.</summary>
+    private static readonly string[] GitHubHosts =
+    {
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+        "raw.githubusercontent.com"
+    };
 
     // ---------------------------------------------------------- downloading
 
@@ -360,12 +441,4 @@ public sealed class UpdateClient
     private static Version Normalise(Version value)
         => new(Math.Max(value.Major, 0), Math.Max(value.Minor, 0),
                Math.Max(value.Build, 0), Math.Max(value.Revision, 0));
-
-    private static bool SameHost(string root, string url)
-    {
-        return Uri.TryCreate(root, UriKind.Absolute, out var a)
-               && Uri.TryCreate(url, UriKind.Absolute, out var b)
-               && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
-               && b.Scheme == a.Scheme;
-    }
 }

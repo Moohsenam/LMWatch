@@ -156,6 +156,19 @@ public sealed class PricingConfig
     public string LastRateError { get; set; } = string.Empty;
 }
 
+/// <summary>What the panel sends when the release source is changed.</summary>
+public sealed class GitHubSettings
+{
+    public bool On { get; set; }
+    public string? Repo { get; set; }
+
+    /// <summary>Left empty or still masked means keep the one already stored.</summary>
+    public string? Token { get; set; }
+
+    /// <summary>Clears the stored token.</summary>
+    public bool Forget { get; set; }
+}
+
 public sealed class ServiceConfig
 {
     public string BusinessName { get; set; } = "SafeChat";
@@ -181,6 +194,28 @@ public sealed class ServiceConfig
     /// removed.
     /// </summary>
     public bool ChatGptPlansSeeded { get; set; }
+
+    // ---- where builds come from ------------------------------------------
+
+    /// <summary>
+    /// Watch a GitHub repository for new releases and mirror them here. The
+    /// repository can be private: the token stays on this server, customers
+    /// only ever see /download, and nothing in the app knows GitHub exists.
+    /// </summary>
+    public bool GitHubMirror { get; set; }
+
+    /// <summary>owner/name, as it appears in the repository's address.</summary>
+    public string GitHubRepo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// A token with read access to that repository's contents. Kept here
+    /// because it has to be usable; never sent to a browser, never in an API
+    /// answer, and only ever used against api.github.com.
+    /// </summary>
+    public string GitHubToken { get; set; } = string.Empty;
+
+    /// <summary>The tag this server has already taken, so it takes it once.</summary>
+    public string GitHubLastTag { get; set; } = string.Empty;
 
     // Auth material. Generated on first run, never shipped with the source.
     public string PasswordHash { get; set; } = string.Empty;

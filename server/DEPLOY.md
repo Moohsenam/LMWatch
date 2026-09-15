@@ -74,10 +74,29 @@ build is. From the machine with the source on it:
 .\tools\release.ps1 -Version 1.1.0 -Notes "Faster startup"
 ```
 
-That publishes, compiles the installer, uploads it and makes it current. The
-panel's **نسخه‌ها** tab lists every build with its size, hash and download
-count, and can switch one off or delete it. `/download` is always whatever is
-current, which is the link the landing page should use.
+That publishes, compiles the installer, attaches it to a `v1.1.0` release on
+GitHub, uploads it here and makes it current. The panel's **نسخه‌ها** tab lists
+every build with its size, hash and download count, and can switch one off or
+delete it. `/download` is always whatever is current, which is the link the
+landing page should use.
+
+### Taking builds from GitHub instead
+
+The same tab can watch a repository and bring in whatever is tagged there, so
+`git tag` is the whole release and nothing has to be uploaded by hand. Fill in
+the repository and a token with read access to it, and every five minutes the
+server takes any release whose tag is newer than the one it already has, copies
+the `.exe` attached to it, and starts serving that.
+
+**The repository can stay private, and that is the point of doing it here.** The
+token lives on this server and never leaves it: the app is never told where the
+code is, customers download from `/download` like always, and the panel shows
+the token as dots once it is stored. A token that shipped inside the app could
+be read straight back out of it by anyone holding a copy, which is why the app
+does not do this part itself.
+
+The tag has to look like `v1.2.3`, and the installer has to be attached to the
+release as a `.exe`. Anything else attached to it is left alone.
 
 Three endpoints do the work:
 

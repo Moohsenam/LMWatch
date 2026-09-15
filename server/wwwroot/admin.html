@@ -246,7 +246,7 @@
     <section class="card">
       <h2 class="section">نسخه فعلی</h2>
       <p class="hint">
-        هر اپ نصب‌شده چند ساعت یک‌بار این را می‌پرسد و اگر نسخه‌اش قدیمی‌تر باشد به کاربر خبر می‌دهد.
+        هر اپ نصب‌شده هر ده دقیقه این را می‌پرسد و اگر نسخه‌اش قدیمی‌تر باشد به کاربر خبر می‌دهد.
         تا کاربر خودش نزند چیزی نصب نمی‌شود.
       </p>
 
@@ -254,6 +254,37 @@
 
       <label class="field"><span>لینک دانلود برای سایت و مشتری</span>
         <input type="text" id="relLink" dir="ltr" readonly></label>
+    </section>
+
+    <section class="card">
+      <h2 class="section">گرفتن از گیت‌هاب</h2>
+      <p class="hint">
+        هر پنج دقیقه آخرین ریلیز مخزن را نگاه می‌کند و اگر تگ جدیدی بود فایل نصابش را
+        می‌آورد اینجا و همان را به اپ‌ها می‌دهد. مخزن می‌تواند خصوصی باشد، چون توکن
+        روی همین سرور می‌ماند و مشتری فقط آدرس دانلود این سرور را می‌بیند.
+      </p>
+
+      <label class="check" style="margin:12px 0 14px">
+        <input type="checkbox" id="ghOn">
+        <span>روشن باشد</span>
+      </label>
+
+      <div class="keygrid">
+        <label class="field"><span>مخزن</span>
+          <input type="text" id="ghRepo" dir="ltr" placeholder="owner/name"></label>
+        <label class="field"><span>توکن با دسترسی خواندن آن مخزن</span>
+          <input type="password" id="ghToken" dir="ltr" placeholder="github_pat_..." autocomplete="off"></label>
+      </div>
+
+      <p class="hint">توکن ذخیره می‌شود و دیگر نشان داده نمی‌شود. خالی بگذارید یعنی همان قبلی بماند.</p>
+
+      <div class="toolbar" style="margin-top:14px">
+        <button class="primary" id="ghSave">ذخیره</button>
+        <button class="secondary" id="ghPull">همین حالا چک کن</button>
+        <button class="secondary small" id="ghForget">توکن را پاک کن</button>
+      </div>
+
+      <div id="ghState" class="banner hidden" style="margin-top:14px"></div>
     </section>
 
     <section class="card">

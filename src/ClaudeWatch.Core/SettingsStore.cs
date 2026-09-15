@@ -227,6 +227,17 @@ public sealed class SettingsStore
 
         settings.OrdersBaseUrl = NormalizeBaseUrl(settings.OrdersBaseUrl);
 
+        // Two minutes is often enough for anyone; a day is as rare as it gets
+        // useful. Outside that someone has edited the file by hand.
+        settings.UpdateCheckMinutes = Math.Clamp(settings.UpdateCheckMinutes, 2, 1440);
+
+        settings.UpdateRepo = (settings.UpdateRepo ?? string.Empty).Trim().Trim('/');
+
+        if (string.IsNullOrWhiteSpace(settings.UpdateRepoBranch))
+        {
+            settings.UpdateRepoBranch = "main";
+        }
+
         if (settings.Language is not ("en" or "fa"))
         {
             settings.Language = "en";

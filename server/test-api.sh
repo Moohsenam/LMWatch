@@ -338,6 +338,38 @@ check "and deleting it twice is a 404" 404 "$(status -b "$JAR" -X DELETE "$BASE/
 
 rm -f "$SETUP"
 
+# ------------------------------------------------- taking builds from GitHub
+
+echo
+echo "The GitHub mirror"
+
+contains "it is off until someone turns it on" '"result":"off"' \
+  "$(curl -s -b "$JAR" -X POST "$BASE/api/admin/releases/github/pull" -H 'X-CW: 1')"
+
+check "settings need a session" 401 \
+  "$(status -X POST "$BASE/api/admin/releases/github" -H 'X-CW: 1' -H 'Content-Type: application/json' \
+     -d '{"on":true,"repo":"someone/else","token":"secret-token-value"}')"
+
+curl -s -o /dev/null -b "$JAR" -X POST "$BASE/api/admin/releases/github" -H 'X-CW: 1' \
+  -H 'Content-Type: application/json' -d '{"on":true,"repo":"owner/name","token":"secret-token-value"}'
+
+GH="$(curl -s -b "$JAR" "$BASE/api/admin/releases")"
+contains "the repository comes back" '"repo":"owner/name"' "$GH"
+check "the token never does" 0 "$(echo "$GH" | grep -c 'secret-token-value')"
+contains "only that one is set" '••' "$GH"
+
+# Leaving the box empty has to keep the token rather than wipe it, or every
+# unrelated save would quietly break the mirror.
+curl -s -o /dev/null -b "$JAR" -X POST "$BASE/api/admin/releases/github" -H 'X-CW: 1' \
+  -H 'Content-Type: application/json' -d '{"on":true,"repo":"owner/other","token":""}'
+contains "an empty box keeps the stored token" '••' "$(curl -s -b "$JAR" "$BASE/api/admin/releases")"
+
+curl -s -o /dev/null -b "$JAR" -X POST "$BASE/api/admin/releases/github" -H 'X-CW: 1' \
+  -H 'Content-Type: application/json' -d '{"on":false,"repo":"owner/other","forget":true}'
+GH="$(curl -s -b "$JAR" "$BASE/api/admin/releases")"
+contains "forgetting it clears it" '"token":""' "$GH"
+contains "and turns the mirror off" '"on":false' "$GH"
+
 check "logging out clears the session" 200 "$(status -b "$JAR" -c "$JAR" -X POST "$BASE/api/admin/logout" -H 'X-CW: 1')"
 check "the list is shut again" 401 "$(status -b "$JAR" "$BASE/api/admin/orders")"
 check "and so is the release list" 401 "$(status -b "$JAR" "$BASE/api/admin/releases")"

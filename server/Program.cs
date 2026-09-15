@@ -24,12 +24,14 @@ var auth = new Auth(store);
 var limiter = new RateLimiter();
 var pricing = new PricingService(store);
 var releases = new ReleaseStore(dataRoot);
+var mirror = new GitHubMirror(store, releases);
 
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(auth);
 builder.Services.AddSingleton(limiter);
 builder.Services.AddSingleton(pricing);
 builder.Services.AddSingleton(releases);
+builder.Services.AddSingleton(mirror);
 
 builder.Services.Configure<JsonOptions>(options =>
 {
@@ -849,7 +851,70 @@ app.MapGet("/download/{version}", (HttpContext context, string version) =>
 app.MapGet("/api/admin/releases", (HttpContext context) =>
 {
     var guard = RequireAdmin(context);
-    return guard ?? Results.Json(new { items = releases.All(), latest = releases.Latest()?.Version ?? "" });
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var config = store.Config;
+
+    return Results.Json(new
+    {
+        items = releases.All(),
+        latest = releases.Latest()?.Version ?? "",
+        github = new
+        {
+            on = config.GitHubMirror,
+            repo = config.GitHubRepo,
+            // Enough to see a token is set, never enough to use it.
+            token = config.GitHubToken.Length > 0 ? "••••••••" : "",
+            lastTag = config.GitHubLastTag,
+            lastCheck = mirror.LastCheck,
+            lastCode = mirror.LastCode,
+            lastResult = mirror.LastResult
+        }
+    });
+});
+
+// Where builds come from. The token is write-only from here: it goes in, it is
+// never read back out, and leaving the field alone keeps the one already set.
+app.MapPost("/api/admin/releases/github", (HttpContext context, GitHubSettings request) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    store.SaveConfig(config =>
+    {
+        config.GitHubMirror = request.On;
+        config.GitHubRepo = (request.Repo ?? string.Empty).Trim().Trim('/');
+
+        if (!string.IsNullOrWhiteSpace(request.Token) && !request.Token.StartsWith("••"))
+        {
+            config.GitHubToken = request.Token.Trim();
+        }
+
+        if (request.Forget)
+        {
+            config.GitHubToken = string.Empty;
+        }
+    });
+
+    return Results.Json(new { ok = true });
+});
+
+app.MapPost("/api/admin/releases/github/pull", async (HttpContext context, bool? force) =>
+{
+    var guard = RequireAdmin(context, writing: true);
+    if (guard is not null)
+    {
+        return guard;
+    }
+
+    var result = await mirror.PullAsync(force ?? false);
+    return Results.Json(new { ok = true, code = mirror.LastCode, result });
 });
 
 // The installer itself, as the raw body. A build is tens of megabytes, so it
@@ -952,6 +1017,9 @@ app.MapDelete("/api/admin/releases/{version}", (HttpContext context, string vers
 var sweeper = new Timer(_ => limiter.Sweep(), null, TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30));
 app.Lifetime.ApplicationStopping.Register(() => sweeper.Dispose());
 app.Lifetime.ApplicationStopping.Register(() => pricing.Dispose());
+
+mirror.Start();
+app.Lifetime.ApplicationStopping.Register(() => mirror.Dispose());
 
 app.Logger.LogInformation("Data folder: {Root}", store.Root);
 app.Run(urls);

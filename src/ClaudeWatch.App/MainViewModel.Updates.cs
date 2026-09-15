@@ -92,7 +92,7 @@ public sealed partial class MainViewModel
     {
         get
         {
-            if (_updates.Step == UpdateStep.Checking)
+            if (_updates.Step == UpdateStep.Checking || _updateBusy)
             {
                 return L["Upd_Looking"];
             }
@@ -107,6 +107,62 @@ public sealed partial class MainViewModel
                 : string.Format(L["Upd_CurrentAt"], AppVersion, _updates.LastCheck.ToLocalTime().ToString("HH:mm"));
         }
     }
+
+    /// <summary>The version this copy is, on its own, in large type.</summary>
+    public string UpdateInstalledLine => string.Format(L["Upd_Installed"], AppVersion);
+
+    /// <summary>Where the answer came from, and how often it is asked for.</summary>
+    public string UpdateSourceLine
+    {
+        get
+        {
+            var every = string.Format(L["Upd_Every"], Math.Clamp(_settings.UpdateCheckMinutes, 2, 1440));
+
+            if (!_settings.CheckForUpdates)
+            {
+                return L["Upd_Off"];
+            }
+
+            var where = _updates.Source switch
+            {
+                "github" => L["Upd_FromGitHub"],
+                "server" => L["Upd_FromServer"],
+                _ => HasUpdateRepo ? L["Upd_FromBoth"] : L["Upd_FromServerOnly"]
+            };
+
+            return $"{every} · {where}";
+        }
+    }
+
+    public bool HasUpdateRepo => !string.IsNullOrWhiteSpace(_settings.UpdateRepo);
+
+    /// <summary>
+    /// The interval as a box someone types in. Anything that is not a number
+    /// leaves the current value alone rather than resetting it to something
+    /// surprising.
+    /// </summary>
+    public string UpdateMinutes
+    {
+        get => Edit.UpdateCheckMinutes.ToString();
+        set
+        {
+            if (int.TryParse(value, out var minutes))
+            {
+                Edit.UpdateCheckMinutes = Math.Clamp(minutes, 2, 1440);
+            }
+
+            Raise(nameof(UpdateMinutes));
+        }
+    }
+
+    /// <summary>The notes card only earns its space when there is something in it.</summary>
+    public bool UpdateHasNotes
+        => UpdateAvailable && !string.IsNullOrWhiteSpace(_updates.Available?.Notes);
+
+    public string UpdateNotes => _updates.Available?.Notes ?? string.Empty;
+
+    /// <summary>"Install" on the Settings card, or nothing when there is nothing to install.</summary>
+    public bool UpdateShowInstall => UpdateAvailable && !UpdateWorking;
 
     // ------------------------------------------------------------- commands
 
@@ -130,7 +186,11 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Starts the background checking. Once a few seconds after the window is
-    /// up, so it never competes with startup, and every six hours after that.
+    /// up, so it never competes with startup, then on the interval in Settings,
+    /// ten minutes by default.
+    ///
+    /// A few seconds of scatter goes on top of every wait. Without it every
+    /// copy installed on the same day would ask at the same second forever.
     /// </summary>
     public void StartUpdateWatch()
     {
@@ -148,12 +208,25 @@ public sealed partial class MainViewModel
 
         _updateTimer.Tick += (_, _) =>
         {
-            // The first tick is the short one; every one after is the long wait.
-            _updateTimer.Interval = TimeSpan.FromHours(6);
+            _updateTimer.Interval = NextWait();
             _ = CheckForUpdateAsync(quiet: true);
         };
 
         _updateTimer.Start();
+    }
+
+    private TimeSpan NextWait()
+    {
+        var minutes = Math.Clamp(_settings.UpdateCheckMinutes, 2, 1440);
+        return TimeSpan.FromMinutes(minutes) + TimeSpan.FromSeconds(Random.Shared.Next(0, 45));
+    }
+
+    /// <summary>Picks up a changed interval, or a switch turned off, on save.</summary>
+    public void RestartUpdateWatch()
+    {
+        StopUpdateWatch();
+        StartUpdateWatch();
+        RaiseUpdate();
     }
 
     public void StopUpdateWatch()
@@ -182,7 +255,7 @@ public sealed partial class MainViewModel
 
         try
         {
-            var found = await _updates.CheckAsync(_settings.OrdersBaseUrl).ConfigureAwait(true);
+            var found = await _updates.CheckAsync(_settings).ConfigureAwait(true);
 
             if (found is not null)
             {

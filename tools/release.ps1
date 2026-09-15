@@ -41,6 +41,20 @@
     ordinary build needs no connection; this one step does, because a
     self-contained app carries the runtime and the runtime comes from there.
     Downloaded once, then cached, so only the first build needs it.
+
+.PARAMETER Repo
+    The GitHub repository the build is published to as a release, tagged
+    v<version> with the installer attached. It can stay private: the server
+    pulls from it with its own token and hands customers the file, so nobody
+    outside ever sees the address.
+
+.PARAMETER GitHubToken
+    A token that can write releases on that repository. Taken from the GH_TOKEN
+    environment variable when it is set, and asked for without being shown
+    otherwise. Never written to a file or printed.
+
+.PARAMETER NoGitHub
+    Skip the GitHub release and only put the build on the server.
 #>
 
 [CmdletBinding()]
@@ -51,7 +65,10 @@ param(
     [string] $Password,
     [switch] $NoUpload,
     [switch] $Draft,
-    [string] $Source = 'https://api.nuget.org/v3/index.json'
+    [string] $Source = 'https://api.nuget.org/v3/index.json',
+    [string] $Repo = 'Moohsenam/LMWatch',
+    [string] $GitHubToken,
+    [switch] $NoGitHub
 )
 
 $ErrorActionPreference = 'Stop'
@@ -212,6 +229,94 @@ if ($NoUpload) {
     Write-Host '   Run it yourself to check it, then run this again without -NoUpload.'
     Write-Host ''
     exit 0
+}
+
+# ------------------------------------------------------- GitHub release
+
+if (-not $NoGitHub) {
+    Say "Publishing the release on $Repo"
+
+    if (-not $GitHubToken) { $GitHubToken = $env:GH_TOKEN }
+
+    if (-not $GitHubToken) {
+        Write-Host '   A token that can write releases on that repository.'
+        Write-Host '   Set GH_TOKEN once to stop being asked, or leave this empty to skip GitHub.'
+        $secure = Read-Host '   Token' -AsSecureString
+        $GitHubToken = [System.Net.NetworkCredential]::new('', $secure).Password
+    }
+
+    if (-not $GitHubToken) {
+        Write-Host '   No token given, so GitHub was skipped.' -ForegroundColor Yellow
+    }
+    else {
+        $gh = @{
+            Authorization = "Bearer $GitHubToken"
+            Accept        = 'application/vnd.github+json'
+            'User-Agent'  = 'SafeChat-release'
+            'X-GitHub-Api-Version' = '2022-11-28'
+        }
+
+        $tag = "v$Version"
+        $release = $null
+
+        $releaseBody = "SafeChat $Version"
+        if ($Notes) { $releaseBody = $Notes }
+
+        try {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Method Post `
+                -Headers $gh -TimeoutSec 60 `
+                -Body (@{
+                    tag_name = $tag
+                    name     = "SafeChat $Version"
+                    body     = $releaseBody
+                    draft    = $false
+                } | ConvertTo-Json)
+
+            Write-Host "   Created $tag"
+        }
+        catch {
+            # Already there: reuse it rather than refusing to rebuild a version.
+            try {
+                $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$tag" `
+                    -Headers $gh -TimeoutSec 60
+                Write-Host "   $tag already exists, replacing its installer"
+            }
+            catch {
+                Write-Host "   Could not reach GitHub: $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-Host '   The build is fine and still goes to the server.' -ForegroundColor Yellow
+                $release = $null
+            }
+        }
+
+        if ($release) {
+            $assetName = Split-Path $setup -Leaf
+
+            foreach ($old in @($release.assets | Where-Object { $_.name -eq $assetName })) {
+                try {
+                    Invoke-RestMethod -Uri $old.url -Method Delete -Headers $gh -TimeoutSec 60 | Out-Null
+                }
+                catch {
+                    Write-Host "   Could not remove the old asset: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+            }
+
+            $uploadTo = ($release.upload_url -replace '\{.*\}', '') + "?name=$assetName"
+
+            try {
+                $asset = Invoke-RestMethod -Uri $uploadTo -Method Post `
+                    -Headers $gh -ContentType 'application/octet-stream' `
+                    -InFile $setup -TimeoutSec 1800
+
+                Write-Host "   Attached $($asset.name)" -ForegroundColor Green
+                Write-Host '   The server takes it within five minutes on its own.'
+            }
+            catch {
+                Write-Host "   The installer did not attach: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    $GitHubToken = $null
 }
 
 # ------------------------------------------------------------------- upload

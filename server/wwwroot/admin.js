@@ -1217,6 +1217,21 @@ async function loadReleases() {
     $('relLink').value = '';
   }
 
+  const gh = data.github || {};
+  $('ghOn').checked = !!gh.on;
+  $('ghRepo').value = gh.repo || '';
+  $('ghToken').placeholder = gh.token ? 'ذخیره شده، برای عوض کردن بنویسید' : 'github_pat_...';
+
+  if (gh.on && gh.lastCode) {
+    const good = gh.lastCode === 'took' || gh.lastCode === 'same';
+    $('ghState').className = good ? 'banner ok' : 'banner warn';
+    $('ghState').textContent = `${ghSays(gh.lastCode, gh.lastResult)} آخرین بررسی ${num(when(gh.lastCheck))}.`;
+    $('ghState').title = gh.lastResult || '';
+    $('ghState').classList.remove('hidden');
+  } else {
+    $('ghState').classList.add('hidden');
+  }
+
   $('relEmpty').classList.toggle('hidden', items.length > 0);
 
   $('relList').innerHTML = items.map((r) => {
@@ -1266,6 +1281,84 @@ async function loadReleases() {
       loadReleases();
     }));
 }
+
+// The server logs in English. This is the same thing said here.
+const GH_SAID = {
+  off: 'خاموش است، یا مخزن و توکن پر نشده.',
+  busy: 'یک بررسی همین حالا در جریان است.',
+  badtoken: 'توکن قبول نشد.',
+  noaccess: 'این توکن اجازه خواندن آن مخزن را ندارد.',
+  norepo: 'مخزنی به این نام نیست، یا هنوز ریلیزی روی آن نیست.',
+  notag: 'آن ریلیز تگ ندارد.',
+  badtag: 'تگ باید شکل v1.2.3 باشد.',
+  noasset: 'به آن ریلیز فایل exe وصل نشده.',
+  empty: 'فایل خالی رسید.',
+  same: 'همین نسخه از قبل اینجاست.',
+  took: 'نسخه جدید گرفته شد.',
+  error: 'به گیت‌هاب نرسید.'
+};
+
+function ghSays(code, detail) {
+  const said = GH_SAID[code];
+  return said ? said : (detail || '');
+}
+
+async function saveGitHub(extra) {
+  const body = Object.assign({
+    on: $('ghOn').checked,
+    repo: $('ghRepo').value.trim(),
+    token: $('ghToken').value
+  }, extra || {});
+
+  await api('/api/admin/releases/github', { method: 'POST', body: JSON.stringify(body) });
+
+  $('ghToken').value = '';
+  loadReleases();
+}
+
+$('ghSave').addEventListener('click', () => saveGitHub());
+
+$('ghForget').addEventListener('click', async () => {
+  if (!confirm('توکن گیت‌هاب پاک شود؟')) return;
+  await saveGitHub({ forget: true, on: false });
+});
+
+$('ghPull').addEventListener('click', async () => {
+  const box = $('ghState');
+  box.className = 'banner';
+  box.textContent = 'در حال پرسیدن از گیت‌هاب...';
+  box.classList.remove('hidden');
+
+  $('ghPull').disabled = true;
+
+  try {
+    // Saves first, so pressing it after a change tests what is on the screen.
+    await api('/api/admin/releases/github', {
+      method: 'POST',
+      body: JSON.stringify({
+        on: $('ghOn').checked,
+        repo: $('ghRepo').value.trim(),
+        token: $('ghToken').value
+      })
+    });
+
+    $('ghToken').value = '';
+
+    const response = await api('/api/admin/releases/github/pull?force=true', { method: 'POST' });
+    const answer = await response.json();
+
+    const good = answer.code === 'took' || answer.code === 'same';
+    box.className = good ? 'banner ok' : 'banner warn';
+    box.textContent = ghSays(answer.code, answer.result) || 'چیزی برنگشت.';
+    box.title = answer.result || '';
+  } catch (e) {
+    box.className = 'banner warn';
+    box.textContent = 'نشد: ' + e.message;
+  } finally {
+    $('ghPull').disabled = false;
+    loadReleases();
+  }
+});
 
 $('relUpload').addEventListener('click', async () => {
   const version = $('relVersion').value.trim();

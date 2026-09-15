@@ -162,10 +162,25 @@ public sealed class GuardSettings
     public string OrdersBaseUrl { get; set; } = DefaultOrdersBaseUrl;
 
     /// <summary>
-    /// Ask the server every few hours whether there is a newer build. Only
-    /// asking: what is found is offered and waits to be accepted.
+    /// Ask every so often whether there is a newer build. Only asking: what is
+    /// found is offered and waits to be accepted.
     /// </summary>
     public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>How long between those questions. Ten minutes by default.</summary>
+    public int UpdateCheckMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// A public GitHub repository to look at before the server, as owner/name.
+    /// It reads latest.json from the default branch, so nothing here needs a
+    /// token; a private repository cannot be used, because a token that ships
+    /// inside the app can be read straight back out of it by anyone who has a
+    /// copy. Empty means the server is the only source, which is the default.
+    /// </summary>
+    public string UpdateRepo { get; set; } = string.Empty;
+
+    /// <summary>Which branch that file sits on.</summary>
+    public string UpdateRepoBranch { get; set; } = "main";
 
     // ---- application --------------------------------------------------
     public bool StartWithWindows { get; set; } = true;
@@ -221,6 +236,9 @@ public sealed class GuardSettings
             KnownHomeIp = KnownHomeIp,
             OrdersBaseUrl = OrdersBaseUrl,
             CheckForUpdates = CheckForUpdates,
+            UpdateCheckMinutes = UpdateCheckMinutes,
+            UpdateRepo = UpdateRepo,
+            UpdateRepoBranch = UpdateRepoBranch,
             StartWithWindows = StartWithWindows,
             StartMinimized = StartMinimized,
             MinimizeToTray = MinimizeToTray,
